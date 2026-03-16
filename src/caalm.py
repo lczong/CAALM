@@ -40,7 +40,7 @@ class ProteinSequenceDataset(Dataset):
         }
 
 
-class CApLMPredictor:
+class CAALMPredictor:
     """
     Two-stage protein sequence predictor combining binary and multi-label classification.
     Stage 1: Binary classification (cazy vs non-cazy)
@@ -82,9 +82,9 @@ class CApLMPredictor:
             )
         else:
             print("No local binary model path provided, will download from HuggingFace")
-            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CApLM", subfolder="binary")
+            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder="binary")
             self.binary_model = AutoModelForSequenceClassification.from_pretrained(
-                "lczong/CApLM",
+                "lczong/CAALM",
                 subfolder="binary",
                 torch_dtype=self.dtype
             )
@@ -106,9 +106,9 @@ class CApLMPredictor:
             )
         else:
             print("No local multi-label model path provided, will download from HuggingFace")
-            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CApLM", subfolder="multi-label")
+            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder="multi-label")
             self.multi_model = AutoModelForSequenceClassification.from_pretrained(
-                "lczong/CApLM",
+                "lczong/CAALM",
                 subfolder="multi-label",
                 torch_dtype=self.dtype
             )

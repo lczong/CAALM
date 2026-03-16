@@ -1,10 +1,10 @@
 import argparse
-from caplm import CApLMPredictor
+from caalm import CAALMPredictor
 from utils import log_gpu_count
 
 def main():
     parser = argparse.ArgumentParser(
-        description='CApLM: Predict CAZymes and CAZyme classes from protein sequences',
+        description='CAALM: Predict CAZymes and CAZyme classes from protein sequences',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -44,7 +44,7 @@ def main():
     
     log_gpu_count()
     
-    predictor = CApLMPredictor(
+    predictor = CAALMPredictor(
         device=args.device,
         mixed_precision=args.mixed_precision
     )
