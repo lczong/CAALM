@@ -42,9 +42,9 @@ class ProteinSequenceDataset(Dataset):
 
 class CAALMPredictor:
     """
-    Two-stage protein sequence predictor combining binary and multi-label classification.
-    Stage 1: Binary classification (cazy vs non-cazy)
-    Stage 2: Multi-label classification for positive samples
+    Two-stage protein sequence predictor combining level0 and level1 classification.
+    Stage 1: Level 0 classification (cazy vs non-cazy)
+    Stage 2: Level 1 classification for positive samples
     """
     
     def __init__(self, device: str = None, mixed_precision: str = 'bf16'):
@@ -53,8 +53,8 @@ class CAALMPredictor:
         self.mixed_precision = mixed_precision
         print(f"Device: {self.device}, Mixed Precision: {mixed_precision}")
         
-        self.binary_model = None
-        self.multi_model = None
+        self.level0_model = None
+        self.level1_model = None
         self.tokenizer = None
         self.data_collator = None
         
@@ -65,60 +65,71 @@ class CAALMPredictor:
         self.stage2_results = None
         self.positive_ids = set()
         
-        self.binary_label_to_id = {'non-cazy': 0, 'cazy': 1}
-        self.binary_id_to_label = {0: 'non-cazy', 1: 'cazy'}
+        self.level0_label_to_id = {'non-cazy': 0, 'cazy': 1}
+        self.level0_id_to_label = {0: 'non-cazy', 1: 'cazy'}
         
-        self.multi_classes = ["GT", "GH", "CBM", "CE", "PL", "AA"]
+        self.level1_classes = ["GT", "GH", "CBM", "CE", "PL", "AA"]
         
-    def load_binary_model(self, model_path: str):
+    def _load_default_model(self, preferred_subfolder: str, legacy_subfolder: str):
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder=preferred_subfolder)
+            model = AutoModelForSequenceClassification.from_pretrained(
+                "lczong/CAALM",
+                subfolder=preferred_subfolder,
+                torch_dtype=self.dtype
+            )
+            return model
+        except Exception as exc:
+            print(
+                f"Unable to load HuggingFace subfolder '{preferred_subfolder}', "
+                f"falling back to legacy subfolder '{legacy_subfolder}': {exc}"
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder=legacy_subfolder)
+            return AutoModelForSequenceClassification.from_pretrained(
+                "lczong/CAALM",
+                subfolder=legacy_subfolder,
+                torch_dtype=self.dtype
+            )
+
+    def load_level0_model(self, model_path: str):
         if model_path:
-            print(f"🔬 Loading Binary Classification Model from {model_path}")
+            print(f"🔬 Loading Level 0 Classification Model from {model_path}")
             if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Binary model path not found: {model_path}")
+                raise FileNotFoundError(f"Level 0 model path not found: {model_path}")
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.binary_model = AutoModelForSequenceClassification.from_pretrained(
+            self.level0_model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
                 torch_dtype=self.dtype
             )
         else:
-            print("No local binary model path provided, will download from HuggingFace")
-            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder="binary")
-            self.binary_model = AutoModelForSequenceClassification.from_pretrained(
-                "lczong/CAALM",
-                subfolder="binary",
-                torch_dtype=self.dtype
-            )
-        self.binary_model.to(self.device)
-        self.binary_model.eval()
+            print("No local level0 model path provided, will download from HuggingFace")
+            self.level0_model = self._load_default_model("level0", "binary")
+        self.level0_model.to(self.device)
+        self.level0_model.eval()
         self.data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
         
-        print(f"   Binary model loaded successfully")
+        print("   Level 0 model loaded successfully")
         
-    def load_multi_model(self, model_path: str):
+    def load_level1_model(self, model_path: str):
         if model_path:
-            print(f"🔬 Loading Multi-label Classification Model from {model_path}")
+            print(f"🔬 Loading Level 1 Classification Model from {model_path}")
             if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Multi-label model path not found: {model_path}")
+                raise FileNotFoundError(f"Level 1 model path not found: {model_path}")
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.multi_model = AutoModelForSequenceClassification.from_pretrained(
+            self.level1_model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
                 torch_dtype=self.dtype
             )
         else:
-            print("No local multi-label model path provided, will download from HuggingFace")
-            self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder="multi-label")
-            self.multi_model = AutoModelForSequenceClassification.from_pretrained(
-                "lczong/CAALM",
-                subfolder="multi-label",
-                torch_dtype=self.dtype
-            )
-        self.multi_model.to(self.device)
-        self.multi_model.eval()
+            print("No local level1 model path provided, will download from HuggingFace")
+            self.level1_model = self._load_default_model("level1", "multi-label")
+        self.level1_model.to(self.device)
+        self.level1_model.eval()
         if self.data_collator is None:
             self.data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
         
-        print(f"   Multi-label model loaded successfully")
-        
+        print("   Level 1 model loaded successfully")
+
     def load_sequences_from_fasta(self, fasta_file: str) -> Tuple[List[str], List[str]]:
         sequences = []
         ids = []
@@ -143,7 +154,7 @@ class CAALMPredictor:
         data_collator,
         batch_size: int = 8,
         save_embeddings: bool = False,
-        is_multi_label: bool = False,
+        is_level1: bool = False,
         dataloader_workers: int = 4,
     ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         loader = DataLoader(
@@ -181,7 +192,7 @@ class CAALMPredictor:
                 )
                 logits = outputs.logits
                 
-                if is_multi_label:
+                if is_level1:
                     probs = logits.float().sigmoid()
                 else:
                     probs = logits.float().softmax(dim=-1)
@@ -208,8 +219,8 @@ class CAALMPredictor:
         save_embeddings: bool = False,
         dataloader_workers: int = 4,
     ) -> Dict:
-        if self.binary_model is None:
-            raise RuntimeError("Binary model not loaded. Call load_binary_model() first.")
+        if self.level0_model is None:
+            raise RuntimeError("Level 0 model not loaded. Call load_level0_model() first.")
         
         dataset = ProteinSequenceDataset(
             sequences=sequences,
@@ -220,19 +231,19 @@ class CAALMPredictor:
         
         probabilities, embeddings = self.inference(
             dataset=dataset,
-            model=self.binary_model,
+            model=self.level0_model,
             data_collator=self.data_collator,
             batch_size=batch_size,
             save_embeddings=save_embeddings,
-            is_multi_label=False,
+            is_level1=False,
             dataloader_workers=dataloader_workers,
         )
         
         positive_mask = probabilities[:, 1] > threshold
         positive_ids = set([ids[i] for i in range(len(ids)) if positive_mask[i]])
-        predicted_labels = [self.binary_id_to_label[1 if mask else 0] for mask in positive_mask]
+        predicted_labels = [self.level0_id_to_label[1 if mask else 0] for mask in positive_mask]
         
-        print(f"\nBinary Classification Results:")
+        print("\nLevel 0 Classification Results:")
         print(f"   Total sequences: {len(ids)}")
         print(f"   Positive (CAZy): {len(positive_ids)} ({len(positive_ids)/len(ids)*100:.2f}%)")
         print(f"   Negative (Non-CAZy): {len(ids) - len(positive_ids)} ({(len(ids) - len(positive_ids))/len(ids)*100:.2f}%)")
@@ -258,8 +269,8 @@ class CAALMPredictor:
         save_embeddings: bool = False,
         dataloader_workers: int = 4,
     ) -> Dict:
-        if self.multi_model is None:
-            raise RuntimeError("Multi-label model not loaded. Call load_multi_model() first.")
+        if self.level1_model is None:
+            raise RuntimeError("Level 1 model not loaded. Call load_level1_model() first.")
         
         if len(sequences) == 0:
             print("\n⚠️ No sequences provided for Stage 2")
@@ -274,16 +285,16 @@ class CAALMPredictor:
         
         probabilities, embeddings = self.inference(
             dataset=dataset,
-            model=self.multi_model,
+            model=self.level1_model,
             data_collator=self.data_collator,
             batch_size=batch_size,
             save_embeddings=save_embeddings,
-            is_multi_label=True,
+            is_level1=True,
             dataloader_workers=dataloader_workers,
         )
         
         per_class_thr = self.load_thresholds(
-            classes=self.multi_classes,
+            classes=self.level1_classes,
             global_threshold=global_threshold,
             thresholds_list=thresholds,
             thresholds_file=thresholds_file
@@ -293,12 +304,12 @@ class CAALMPredictor:
         
         predicted_label_lists = []
         for i in range(len(ids)):
-            labels = [self.multi_classes[j] for j in range(len(self.multi_classes)) if predictions[i, j] == 1]
+            labels = [self.level1_classes[j] for j in range(len(self.level1_classes)) if predictions[i, j] == 1]
             predicted_label_lists.append(labels)
         
         class_counts = predictions.sum(axis=0)
-        print(f"\nMulti-label Classification Results:")
-        for j, class_name in enumerate(self.multi_classes):
+        print("\nLevel 1 Classification Results:")
+        for j, class_name in enumerate(self.level1_classes):
             print(f"   {class_name}: {int(class_counts[j])} ({class_counts[j]/len(ids)*100:.2f}%)")
         
         return {
@@ -361,9 +372,9 @@ class CAALMPredictor:
             
             header = ["sequence_id", "pred_cazy", "prob_cazy"]
             header.append("pred_cazy_class")
-            for class_name in self.multi_classes:
+            for class_name in self.level1_classes:
                 header.append(f"pred_{class_name}")
-            for class_name in self.multi_classes:
+            for class_name in self.level1_classes:
                 header.append(f"prob_{class_name}")
 
             w.writerow(header)
@@ -378,14 +389,14 @@ class CAALMPredictor:
                 if seq_id in stage2_map:
                     result = stage2_map[seq_id]
                     row.append('|'.join(result['labels']) if result['labels'] else 'none')
-                    for j, class_name in enumerate(self.multi_classes):
+                    for j, class_name in enumerate(self.level1_classes):
                         row.append(int(result['preds'][j]))
-                    for j, class_name in enumerate(self.multi_classes):
+                    for j, class_name in enumerate(self.level1_classes):
                         row.append(float(result['probs'][j]))
 
                 else:
                     row.append('N/A')
-                    for class_name in self.multi_classes:
+                    for class_name in self.level1_classes:
                         row.extend([0.0, 0])
                 
                 w.writerow(row)
@@ -419,16 +430,16 @@ class CAALMPredictor:
             total = len(stage1_results['ids'])
             f.write(f"Total sequences,{total},100.00\n")
             
-            f.write("\n# Stage 1 - Binary Classification\n")
+            f.write("\n# Stage 1 - Level 0 Classification\n")
             cazy_count = len(stage1_results['positive_ids'])
             non_cazy_count = total - cazy_count
             f.write(f"CAZy,{cazy_count},{cazy_count/total*100:.2f}\n")
             f.write(f"Non-CAZy,{non_cazy_count},{non_cazy_count/total*100:.2f}\n")
             
             if stage2_results and cazy_count > 0:
-                f.write("\n# Stage 2 - Multi-label Classification (CAZy samples only)\n")
+                f.write("\n# Stage 2 - Level 1 Classification (CAZy samples only)\n")
                 class_counts = stage2_results['predictions'].sum(axis=0)
-                for j, class_name in enumerate(self.multi_classes):
+                for j, class_name in enumerate(self.level1_classes):
                     count = int(class_counts[j])
                     f.write(f"{class_name},{count},{count/cazy_count*100:.2f}\n")
         
@@ -437,12 +448,12 @@ class CAALMPredictor:
     def predict(
         self,
         test_fasta: str,
-        binary_model_path: Optional[str] = None,
-        multi_model_path: Optional[str] = None,
-        binary_threshold: float = 0.5,
-        multi_thresholds: Optional[List[float]] = None,
-        multi_thresholds_file: Optional[str] = None,
-        multi_global_threshold: float = 0.5,
+        level0_model_path: Optional[str] = None,
+        level1_model_path: Optional[str] = None,
+        level0_threshold: float = 0.5,
+        level1_thresholds: Optional[List[float]] = None,
+        level1_thresholds_file: Optional[str] = None,
+        level1_global_threshold: float = 0.5,
         batch_size: int = 8,
         max_length: int = 1024,
         output_dir: str = "./outputs",
@@ -456,10 +467,10 @@ class CAALMPredictor:
         stage2_results = None
         
         print(f"\n{'='*60}")
-        print("STAGE 1: Binary Classification (CAZy vs Non-CAZy)")
+        print("STAGE 1: Level 0 Classification (CAZy vs Non-CAZy)")
         print(f"{'='*60}")
 
-        self.load_binary_model(binary_model_path)
+        self.load_level0_model(level0_model_path)
 
         print(f"\nRunning on {len(sequences)} sequences from {test_fasta}")
 
@@ -468,7 +479,7 @@ class CAALMPredictor:
             ids=ids,
             batch_size=batch_size,
             max_length=max_length,
-            threshold=binary_threshold,
+            threshold=level0_threshold,
             save_embeddings=save_embeddings,
             dataloader_workers=dataloader_workers,
         )
@@ -481,10 +492,10 @@ class CAALMPredictor:
             positive_ids_list = [id for id in self.positive_ids if id in self.all_sequences]
                     
             print(f"\n{'='*60}")
-            print(f"STAGE 2: Multi-label Classification (GT, GH, CBM, CE, PL, AA)")
+            print("STAGE 2: Level 1 Classification (GT, GH, CBM, CE, PL, AA)")
             print(f"{'='*60}")
 
-            self.load_multi_model(multi_model_path)
+            self.load_level1_model(level1_model_path)
 
             print(f"\nRunning on {len(positive_sequences)} positive sequences")
 
@@ -494,9 +505,9 @@ class CAALMPredictor:
                     ids=positive_ids_list,
                     batch_size=batch_size,
                     max_length=max_length,
-                    thresholds=multi_thresholds,
-                    thresholds_file=multi_thresholds_file,
-                    global_threshold=multi_global_threshold,
+                    thresholds=level1_thresholds,
+                    thresholds_file=level1_thresholds_file,
+                    global_threshold=level1_global_threshold,
                     save_embeddings=save_embeddings,
                     dataloader_workers=dataloader_workers,
                 )

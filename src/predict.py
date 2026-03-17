@@ -8,18 +8,23 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument('--binary-model', help='Path to binary classification model')
-    parser.add_argument('--multi-model', help='Path to multi-label classification model')
+    parser.add_argument('--level0-model', dest='level0_model',
+                        help='Path to level0 classification model')
+    parser.add_argument('--level1-model', dest='level1_model',
+                        help='Path to level1 classification model')
     parser.add_argument('--input', required=True, help='Path to input FASTA file')
     
-    parser.add_argument('--binary-threshold', type=float, default=0.5,
-                        help='Threshold for binary classification')
+    parser.add_argument('--level0-threshold', dest='level0_threshold',
+                        type=float, default=0.5,
+                        help='Threshold for level0 classification')
     
-    parser.add_argument('--multi-threshold', type=float, default=0.5,
-                        help='Global threshold for multi-label classification')
-    parser.add_argument('--multi-thresholds', type=float, nargs='*',
+    parser.add_argument('--level1-threshold', dest='level1_threshold',
+                        type=float, default=0.5,
+                        help='Global threshold for level1 classification')
+    parser.add_argument('--level1-thresholds', dest='level1_thresholds',
+                        type=float, nargs='*',
                         help='Per-class thresholds (6 values)')
-    parser.add_argument('--multi-thresholds-file',
+    parser.add_argument('--level1-thresholds-file', dest='level1_thresholds_file',
                         help='JSON file with per-class thresholds')
     
     parser.add_argument('--batch-size', type=int, default=2,
@@ -51,12 +56,12 @@ def main():
     
     predictor.predict(
         test_fasta=args.input,
-        binary_model_path=args.binary_model,
-        multi_model_path=args.multi_model,
-        binary_threshold=args.binary_threshold,
-        multi_thresholds=args.multi_thresholds,
-        multi_thresholds_file=args.multi_thresholds_file,
-        multi_global_threshold=args.multi_threshold,
+        level0_model_path=args.level0_model,
+        level1_model_path=args.level1_model,
+        level0_threshold=args.level0_threshold,
+        level1_thresholds=args.level1_thresholds,
+        level1_thresholds_file=args.level1_thresholds_file,
+        level1_global_threshold=args.level1_threshold,
         batch_size=args.batch_size,
         max_length=args.max_length,
         output_dir=args.output_dir,
