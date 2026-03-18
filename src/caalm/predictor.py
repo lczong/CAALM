@@ -7,26 +7,26 @@ from typing import Dict, List, Tuple, Optional, Sequence
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import (
-    AutoTokenizer, 
+    AutoTokenizer,
     AutoModelForSequenceClassification,
     DataCollatorWithPadding
 )
 from tqdm import tqdm
 from Bio import SeqIO
-from level2 import run_level2_prediction
+from .level2 import run_level2_prediction
 
 
 class ProteinSequenceDataset(Dataset):
-    def __init__(self, sequences: List[str], ids: List[str], 
+    def __init__(self, sequences: List[str], ids: List[str],
                  tokenizer, max_length: int = 1024):
         self.sequences = sequences
         self.ids = ids
         self.tokenizer = tokenizer
         self.max_length = max_length
-        
+
     def __len__(self):
         return len(self.sequences)
-    
+
     def __getitem__(self, idx):
         sequence = self.sequences[idx]
         encoding = self.tokenizer(
@@ -49,31 +49,31 @@ class CAALMPredictor:
     Level 1: classification for positive samples
     Level 2: retrieval prediction for level1-positive samples
     """
-    
+
     def __init__(self, device: str = None, mixed_precision: str = 'bf16'):
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dtype = torch.bfloat16 if mixed_precision == 'bf16' else torch.float16 if mixed_precision == 'fp16' else torch.float32
         self.mixed_precision = mixed_precision
         print(f"Device: {self.device}, Mixed Precision: {mixed_precision}")
-        
+
         self.level0_model = None
         self.level1_model = None
         self.tokenizer = None
         self.data_collator = None
-        
+
         self.all_sequences = {}
         self.all_ids = []
-        
+
         self.level0_results = None
         self.level1_results = None
         self.level2_results = None
         self.positive_ids = set()
-        
+
         self.level0_label_to_id = {'non-cazy': 0, 'cazy': 1}
         self.level0_id_to_label = {0: 'non-cazy', 1: 'cazy'}
-        
+
         self.level1_classes = ["GT", "GH", "CBM", "CE", "PL", "AA"]
-        
+
     def _load_default_model(self, preferred_subfolder: str, legacy_subfolder: str):
         try:
             self.tokenizer = AutoTokenizer.from_pretrained("lczong/CAALM", subfolder=preferred_subfolder)
@@ -111,9 +111,9 @@ class CAALMPredictor:
         self.level0_model.to(self.device)
         self.level0_model.eval()
         self.data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
-        
+
         print("   Level 0 model loaded successfully")
-        
+
     def load_level1_model(self, model_path: str):
         if model_path:
             print(f"🔬 Loading Level 1 Classification Model from {model_path}")
@@ -131,25 +131,25 @@ class CAALMPredictor:
         self.level1_model.eval()
         if self.data_collator is None:
             self.data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
-        
+
         print("   Level 1 model loaded successfully")
 
     def load_sequences_from_fasta(self, fasta_file: str) -> Tuple[List[str], List[str]]:
         sequences = []
         ids = []
-        
+
         for record in SeqIO.parse(fasta_file, "fasta"):
             seq_id = record.id
             sequence = str(record.seq).replace('.', '')
-            
+
             sequences.append(sequence)
             ids.append(seq_id)
             self.all_sequences[seq_id] = sequence
-            
+
         self.all_ids = ids
-        
+
         return sequences, ids
-    
+
     @torch.no_grad()
     def inference(
         self,
@@ -169,23 +169,23 @@ class CAALMPredictor:
             collate_fn=data_collator,
             pin_memory=(self.device == "cuda"),
         )
-        
+
         model.eval()
 
         all_probs = []
         all_embs = [] if save_embeddings else None
-        
+
         if self.mixed_precision == 'bf16' and self.device == "cuda" and torch.cuda.is_bf16_supported():
             autocast_dtype = torch.bfloat16
         elif self.mixed_precision == 'fp16' and self.device == "cuda" and torch.cuda.is_fp16_supported():
             autocast_dtype = torch.float16
         else:
             autocast_dtype = None
-        
+
         for batch in tqdm(loader, desc="Predicting"):
             input_ids = batch["input_ids"].to(self.device, non_blocking=True)
             attention_mask = batch["attention_mask"].to(self.device, non_blocking=True)
-            
+
             ctx = torch.amp.autocast(device_type=self.device, dtype=autocast_dtype) if autocast_dtype else torch.amp.autocast(device_type=self.device, enabled=False)
             with ctx:
                 outputs = model(
@@ -195,24 +195,24 @@ class CAALMPredictor:
                     return_dict=True,
                 )
                 logits = outputs.logits
-                
+
                 if is_level1:
                     probs = logits.float().sigmoid()
                 else:
                     probs = logits.float().softmax(dim=-1)
-                    
+
                 all_probs.append(probs.detach().cpu())
-                
+
                 if save_embeddings:
                     hidden_states = outputs.hidden_states
                     emb = hidden_states[-1][:, 0, :]
                     all_embs.append(emb.detach().cpu())
-        
+
         probabilities = torch.cat(all_probs, dim=0).numpy()
         embeddings = torch.cat(all_embs, dim=0).numpy() if save_embeddings else None
-        
+
         return probabilities, embeddings
-    
+
     def predict_level0(
         self,
         sequences: List[str],
@@ -225,14 +225,14 @@ class CAALMPredictor:
     ) -> Dict:
         if self.level0_model is None:
             raise RuntimeError("Level 0 model not loaded. Call load_level0_model() first.")
-        
+
         dataset = ProteinSequenceDataset(
             sequences=sequences,
             ids=ids,
             tokenizer=self.tokenizer,
             max_length=max_length
         )
-        
+
         probabilities, embeddings = self.inference(
             dataset=dataset,
             model=self.level0_model,
@@ -242,16 +242,16 @@ class CAALMPredictor:
             is_level1=False,
             dataloader_workers=dataloader_workers,
         )
-        
+
         positive_mask = probabilities[:, 1] > threshold
         positive_ids = set([ids[i] for i in range(len(ids)) if positive_mask[i]])
         predicted_labels = [self.level0_id_to_label[1 if mask else 0] for mask in positive_mask]
-        
+
         print("\nLevel 0 Classification Results:")
         print(f"   Total sequences: {len(ids)}")
         print(f"   Positive (CAZy): {len(positive_ids)} ({len(positive_ids)/len(ids)*100:.2f}%)")
         print(f"   Negative (Non-CAZy): {len(ids) - len(positive_ids)} ({(len(ids) - len(positive_ids))/len(ids)*100:.2f}%)")
-        
+
         return {
             'probabilities': probabilities,
             'predicted_labels': predicted_labels,
@@ -260,7 +260,7 @@ class CAALMPredictor:
             'ids': ids,
             'threshold': threshold
         }
-    
+
     def predict_level1(
         self,
         sequences: List[str],
@@ -275,18 +275,18 @@ class CAALMPredictor:
     ) -> Dict:
         if self.level1_model is None:
             raise RuntimeError("Level 1 model not loaded. Call load_level1_model() first.")
-        
+
         if len(sequences) == 0:
             print("\n⚠️ No sequences provided for Level 1")
             return None
-        
+
         dataset = ProteinSequenceDataset(
             sequences=sequences,
             ids=ids,
             tokenizer=self.tokenizer,
             max_length=max_length
         )
-        
+
         probabilities, embeddings = self.inference(
             dataset=dataset,
             model=self.level1_model,
@@ -296,26 +296,26 @@ class CAALMPredictor:
             is_level1=True,
             dataloader_workers=dataloader_workers,
         )
-        
+
         per_class_thr = self.load_thresholds(
             classes=self.level1_classes,
             global_threshold=global_threshold,
             thresholds_list=thresholds,
             thresholds_file=thresholds_file
         )
-        
+
         predictions = (probabilities >= per_class_thr[None, :]).astype(int)
-        
+
         predicted_label_lists = []
         for i in range(len(ids)):
             labels = [self.level1_classes[j] for j in range(len(self.level1_classes)) if predictions[i, j] == 1]
             predicted_label_lists.append(labels)
-        
+
         class_counts = predictions.sum(axis=0)
         print("\nLevel 1 Classification Results:")
         for j, class_name in enumerate(self.level1_classes):
             print(f"   {class_name}: {int(class_counts[j])} ({class_counts[j]/len(ids)*100:.2f}%)")
-        
+
         return {
             'probabilities': probabilities,
             'predictions': predictions,
@@ -324,7 +324,7 @@ class CAALMPredictor:
             'ids': ids,
             'thresholds': per_class_thr
         }
-    
+
     def load_thresholds(
         self,
         classes: List[str],
@@ -344,12 +344,12 @@ class CAALMPredictor:
             else:
                 raise ValueError("thresholds_file JSON must be a dict or list")
             return thr
-        
+
         if thresholds_list is not None:
             if len(thresholds_list) != len(classes):
                 raise ValueError(f"thresholds length {len(thresholds_list)} != num classes {len(classes)}")
             return np.array([float(x) for x in thresholds_list], dtype=np.float32)
-        
+
         return np.full(len(classes), float(global_threshold), dtype=np.float32)
 
     def predict_level2(
@@ -429,7 +429,7 @@ class CAALMPredictor:
             print(f"   {family}: {family_count} ({family_count/len(ids)*100:.2f}%)")
 
         return results
-    
+
     def _build_result_maps(
         self,
         level0_results: Dict,
@@ -657,7 +657,7 @@ class CAALMPredictor:
             for seq_id, emb in zip(level1_results["ids"], level1_results["embeddings"]):
                 writer.writerow([seq_id, *emb.tolist()])
         print(f"   Saved Level 1 embeddings CSV to {emb_csv_path}")
-    
+
     def predict(
         self,
         test_fasta: str,
@@ -689,7 +689,7 @@ class CAALMPredictor:
         level1_results = None
         level2_results = None
         need_level1_embeddings = True
-        
+
         print(f"\n{'='*60}")
         print("LEVEL 0: Classification (CAZy vs Non-CAZy)")
         print(f"{'='*60}")
@@ -707,14 +707,14 @@ class CAALMPredictor:
             save_embeddings=False,
             dataloader_workers=dataloader_workers,
         )
-        
+
         self.level0_results = level0_results
         self.positive_ids = level0_results['positive_ids']
-        
+
         if len(self.positive_ids) > 0:
             positive_sequences = [self.all_sequences[id] for id in self.positive_ids if id in self.all_sequences]
             positive_ids_list = [id for id in self.positive_ids if id in self.all_sequences]
-                    
+
             print(f"\n{'='*60}")
             print("LEVEL 1: Classification (GT, GH, CBM, CE, PL, AA)")
             print(f"{'='*60}")
@@ -762,7 +762,7 @@ class CAALMPredictor:
                     level2_device=level2_device,
                 )
                 self.level2_results = level2_results
-        
+
         print("\n" + "="*60)
         print("PREDICTION COMPLETE!")
         print("="*60)

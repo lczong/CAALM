@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caalm"
+version = "1.0.0"
+description = "Carbohydrate Activity Annotation with protein Language Models"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Lincheng Zong", email = "lczong@connect.ust.hk" },
+]
+requires-python = ">=3.9"
+dependencies = [
+    "tqdm",
+    "numpy",
+    "biopython",
+    "torch",
+    "transformers",
+]
+
+[project.optional-dependencies]
+gpu = ["faiss-gpu"]
+cpu = ["faiss-cpu"]
+
+[project.scripts]
+caalm = "caalm.predict:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -10,18 +10,20 @@
 
 2.  **Set Up a Virtual Environment (Recommended)**
     ```bash
-    conda create -n caalm
+    conda create -n caalm python=3.11
     conda activate caalm
     ```
 
-3.  **Install Dependencies**
-    ```
-    tqdm
-    numpy
-    biopython
-    torch
-    transformers
-    faiss-cpu  # or faiss-gpu for level2 retrieval
+3.  **Install the Package**
+
+    Install CAALM and its dependencies with pip (from `pyproject.toml`). Choose either the CPU or GPU build of FAISS:
+
+    ```bash
+    # CPU
+    pip install ".[cpu]"
+
+    # GPU
+    pip install ".[gpu]"
     ```
 
 4.  **Download Model Assets**
@@ -54,10 +56,16 @@ If Level 1 predicts multiple classes such as `GH|CBM`, Level 2 searches both maj
 
 ### Example Command
 
-With the local model assets in this repo:
+A convenience script is provided to run the example with one command:
 
 ```bash
-python src/predict.py \
+./scripts/predict_example.sh
+```
+
+Or invoke the CLI directly with the local model assets:
+
+```bash
+caalm \
   --input example/example.fasta \
   --level0-model models/level0 \
   --level1-model models/level1 \
