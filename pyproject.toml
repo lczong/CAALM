@@ -9,7 +9,7 @@ description = "Carbohydrate Activity Annotation with protein Language Models"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Lincheng Zong", email = "lczong@connect.ust.hk" },
+    { name = "Licheng Zong", email = "lczong@connect.ust.hk" },
 ]
 requires-python = ">=3.9"
 dependencies = [
