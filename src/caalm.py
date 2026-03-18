@@ -1,6 +1,7 @@
 import os
 import json
 import csv
+from pathlib import Path
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Sequence
 import torch
@@ -12,6 +13,7 @@ from transformers import (
 )
 from tqdm import tqdm
 from Bio import SeqIO
+from level2 import run_level2_prediction
 
 
 class ProteinSequenceDataset(Dataset):
@@ -42,9 +44,10 @@ class ProteinSequenceDataset(Dataset):
 
 class CAALMPredictor:
     """
-    Two-stage protein sequence predictor combining level0 and level1 classification.
-    Stage 1: Level 0 classification (cazy vs non-cazy)
-    Stage 2: Level 1 classification for positive samples
+    Three-level protein sequence predictor combining level0, level1, and level2 prediction.
+    Level 0: classification (cazy vs non-cazy)
+    Level 1: classification for positive samples
+    Level 2: retrieval prediction for level1-positive samples
     """
     
     def __init__(self, device: str = None, mixed_precision: str = 'bf16'):
@@ -61,8 +64,9 @@ class CAALMPredictor:
         self.all_sequences = {}
         self.all_ids = []
         
-        self.stage1_results = None
-        self.stage2_results = None
+        self.level0_results = None
+        self.level1_results = None
+        self.level2_results = None
         self.positive_ids = set()
         
         self.level0_label_to_id = {'non-cazy': 0, 'cazy': 1}
@@ -209,7 +213,7 @@ class CAALMPredictor:
         
         return probabilities, embeddings
     
-    def predict_stage1(
+    def predict_level0(
         self,
         sequences: List[str],
         ids: List[str],
@@ -257,7 +261,7 @@ class CAALMPredictor:
             'threshold': threshold
         }
     
-    def predict_stage2(
+    def predict_level1(
         self,
         sequences: List[str],
         ids: List[str],
@@ -273,7 +277,7 @@ class CAALMPredictor:
             raise RuntimeError("Level 1 model not loaded. Call load_level1_model() first.")
         
         if len(sequences) == 0:
-            print("\n⚠️ No sequences provided for Stage 2")
+            print("\n⚠️ No sequences provided for Level 1")
             return None
         
         dataset = ProteinSequenceDataset(
@@ -347,103 +351,312 @@ class CAALMPredictor:
             return np.array([float(x) for x in thresholds_list], dtype=np.float32)
         
         return np.full(len(classes), float(global_threshold), dtype=np.float32)
-    
-    def save_final_results(
+
+    def predict_level2(
         self,
-        stage1_results: Dict,
-        stage2_results: Optional[Dict],
+        embeddings: np.ndarray,
+        ids: List[str],
+        families: Optional[Sequence[str]] = None,
+        candidate_families: Optional[Sequence[Sequence[str]]] = None,
+        checkpoint_path: str = "./models/level2/model.pt",
+        faiss_dir: str = "./models/level2/faiss",
+        label_tsv_dir: str = "./models/level2/refdb",
+        label_column: str = "label",
+        id_column: str = "sequence_id",
+        k: int = 3,
+        projection_batch_size: int = 512,
+        level2_device: Optional[str] = None,
+    ) -> Optional[Dict]:
+        if embeddings is None:
+            raise RuntimeError("Level 2 prediction requires level1 embeddings.")
+        if len(ids) == 0:
+            print("\n⚠️ No sequences provided for Level 2")
+            return None
+        if len(ids) != len(embeddings):
+            raise ValueError(
+                f"Level 2 prediction requires the same number of ids and embeddings, "
+                f"got {len(ids)} ids and {len(embeddings)} embeddings."
+            )
+
+        if families is None:
+            inferred = set()
+            if candidate_families is not None:
+                for family_list in candidate_families:
+                    for family in family_list:
+                        family_name = str(family).strip().upper()
+                        if family_name:
+                            inferred.add(family_name)
+            families = [family for family in self.level1_classes if family in inferred]
+        else:
+            families = [str(family).strip().upper() for family in families if str(family).strip()]
+
+        if not families:
+            print("\n⚠️ No level1 families available for Level 2")
+            return None
+
+        results = run_level2_prediction(
+            seq_ids=ids,
+            embeddings=embeddings,
+            checkpoint_path=Path(checkpoint_path),
+            families=families,
+            faiss_dir=Path(faiss_dir),
+            label_tsv_dir=Path(label_tsv_dir),
+            candidate_families=candidate_families,
+            label_column=label_column,
+            id_column=id_column,
+            k=k,
+            batch_size=projection_batch_size,
+            device_name=level2_device,
+        )
+
+        assigned_count = sum(
+            1
+            for row in results["rows"]
+            if any(
+                details.get("predicted_family")
+                for details in row.get("per_major_class", {}).values()
+            )
+        )
+        print("\nLevel 2 Prediction Results:")
+        print(f"   Total sequences: {len(ids)}")
+        print(f"   Assigned labels: {assigned_count} ({assigned_count/len(ids)*100:.2f}%)")
+        for family in results["families"]:
+            family_count = sum(
+                1
+                for row in results["rows"]
+                if row.get("per_major_class", {}).get(family, {}).get("predicted_family")
+            )
+            print(f"   {family}: {family_count} ({family_count/len(ids)*100:.2f}%)")
+
+        return results
+    
+    def _build_result_maps(
+        self,
+        level0_results: Dict,
+        level1_results: Optional[Dict],
+        level2_results: Optional[Dict],
+    ) -> Tuple[Dict[str, dict], Dict[str, dict], Dict[str, dict]]:
+        level0_map = {}
+        for i, seq_id in enumerate(level0_results["ids"]):
+            level0_map[seq_id] = {
+                "pred_is_cazy": level0_results["predicted_labels"][i] == "cazy",
+                "prob_is_cazy": float(level0_results["probabilities"][i, 1]),
+            }
+
+        level1_map = {}
+        if level1_results:
+            for i, seq_id in enumerate(level1_results["ids"]):
+                probs = level1_results["probabilities"][i]
+                level1_map[seq_id] = {
+                    "predicted_classes": list(level1_results["predicted_labels"][i]),
+                    "class_probabilities": {
+                        class_name: float(probs[j])
+                        for j, class_name in enumerate(self.level1_classes)
+                    },
+                }
+
+        level2_map = {}
+        if level2_results:
+            for row in level2_results["rows"]:
+                candidate_major_classes = row.get("candidate_families")
+                per_major_class = row.get("per_major_class", {})
+                predicted_families = []
+                for major_class in (
+                    candidate_major_classes.split("|") if candidate_major_classes else []
+                ):
+                    major_class_result = per_major_class.get(major_class, {})
+                    if major_class_result.get("predicted_family"):
+                        predicted_families.append(
+                            {
+                                "major_class": major_class,
+                                "family_label": major_class_result["predicted_family"],
+                                "score": major_class_result.get("score"),
+                                "match_sequence_id": major_class_result.get("match_sequence_id"),
+                                "vote_count": major_class_result.get("vote_count"),
+                            }
+                        )
+
+                level2_map[row["sequence_id"]] = {
+                    "predicted_families": predicted_families,
+                    "candidate_major_classes": (
+                        candidate_major_classes.split("|")
+                        if candidate_major_classes
+                        else []
+                    ),
+                }
+
+        return level0_map, level1_map, level2_map
+
+    def save_prediction_outputs(
+        self,
+        level0_results: Dict,
+        level1_results: Optional[Dict],
+        level2_results: Optional[Dict],
         output_dir: str,
-        output_name: str
+        output_name: str,
     ):
         os.makedirs(output_dir, exist_ok=True)
-        
-        stage2_map = {}
-        if stage2_results:
-            for i, seq_id in enumerate(stage2_results['ids']):
-                stage2_map[seq_id] = {
-                    'probs': stage2_results['probabilities'][i],
-                    'preds': stage2_results['predictions'][i],
-                    'labels': stage2_results['predicted_labels'][i]
-                }
-        
-        final_path = f"{output_dir}/{output_name}_predictions.csv"
-        with open(final_path, "w", newline="") as f:
-            w = csv.writer(f)
-            
-            header = ["sequence_id", "pred_cazy", "prob_cazy"]
-            header.append("pred_cazy_class")
-            for class_name in self.level1_classes:
-                header.append(f"pred_{class_name}")
-            for class_name in self.level1_classes:
-                header.append(f"prob_{class_name}")
+        level0_map, level1_map, level2_map = self._build_result_maps(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            level2_results=level2_results,
+        )
 
-            w.writerow(header)
-            
-            for i, seq_id in enumerate(stage1_results['ids']):
-                row = [
+        predictions_path = Path(output_dir) / f"{output_name}_predictions.tsv"
+        with open(predictions_path, "w", newline="") as f:
+            writer = csv.writer(f, delimiter="\t")
+            writer.writerow([
+                "sequence_id",
+                "pred_is_cazy",
+                "pred_cazy_class",
+                "pred_cazy_family",
+            ])
+
+            for seq_id in level0_results["ids"]:
+                level0_row = level0_map[seq_id]
+                level1_row = level1_map.get(seq_id)
+                level2_row = level2_map.get(seq_id)
+                writer.writerow([
                     seq_id,
-                    stage1_results['predicted_labels'][i],
-                    float(stage1_results['probabilities'][i, 1]),
-                ]
-                
-                if seq_id in stage2_map:
-                    result = stage2_map[seq_id]
-                    row.append('|'.join(result['labels']) if result['labels'] else 'none')
-                    for j, class_name in enumerate(self.level1_classes):
-                        row.append(int(result['preds'][j]))
-                    for j, class_name in enumerate(self.level1_classes):
-                        row.append(float(result['probs'][j]))
+                    int(level0_row["pred_is_cazy"]),
+                    "|".join(level1_row["predicted_classes"]) if level1_row else "",
+                    (
+                        ""
+                        if level2_row is None
+                        else "|".join(
+                            item["family_label"]
+                            for item in level2_row["predicted_families"]
+                        )
+                    ),
+                ])
 
-                else:
-                    row.append('N/A')
-                    for class_name in self.level1_classes:
-                        row.extend([0.0, 0])
-                
-                w.writerow(row)
-        
-        print(f"Saved final results to {final_path}")
-        
-        if stage2_results and stage2_results['embeddings'] is not None:
-            emb_path = f"{output_dir}/{output_name}_stage2_embeddings.npy"
-            np.save(emb_path, stage2_results['embeddings'])
-            print(f"   Saved Stage 2 embeddings to {emb_path}")
-            
-            emb_csv_path = f"{output_dir}/{output_name}_stage2_embeddings.csv"
-            with open(emb_csv_path, "w", newline="") as f:
-                w = csv.writer(f)
-                for seq_id, emb in zip(stage2_results['ids'], stage2_results['embeddings']):
-                    w.writerow([seq_id, *emb.tolist()])
-            print(f"   Saved Stage 2 embeddings CSV to {emb_csv_path}")
-    
+        print(f"Saved predictions to {predictions_path}")
+
+        probabilities_path = Path(output_dir) / f"{output_name}_probabilities.jsonl"
+        with open(probabilities_path, "w") as f:
+            for seq_id in level0_results["ids"]:
+                level0_row = level0_map[seq_id]
+                level1_row = level1_map.get(seq_id)
+                level2_row = level2_map.get(seq_id)
+
+                record = {
+                    "sequence_id": seq_id,
+                    "level0": {
+                        "prob_is_cazy": level0_row["prob_is_cazy"],
+                    },
+                    "level1": {
+                        "evaluated": level1_row is not None,
+                        "predicted_classes": [] if level1_row is None else level1_row["predicted_classes"],
+                        "class_probabilities": (
+                            {class_name: None for class_name in self.level1_classes}
+                            if level1_row is None
+                            else level1_row["class_probabilities"]
+                        ),
+                    },
+                    "level2": {
+                        "evaluated": level2_row is not None,
+                        "candidate_major_classes": (
+                            (
+                                [] if level1_row is None else level1_row["predicted_classes"]
+                            )
+                            if level2_row is None
+                            else level2_row["candidate_major_classes"]
+                        ),
+                        "predicted_families": (
+                            [] if level2_row is None else level2_row["predicted_families"]
+                        ),
+                    },
+                }
+                f.write(json.dumps(record) + "\n")
+
+        print(f"Saved probabilities to {probabilities_path}")
+
     def save_statistics(
         self,
-        stage1_results: Dict,
-        stage2_results: Optional[Dict],
+        level0_results: Dict,
+        level1_results: Optional[Dict],
+        level2_results: Optional[Dict],
         output_dir: str,
-        output_name: str
+        output_name: str,
     ):
-        stats_path = f"{output_dir}/{output_name}_statistics.csv"
-        
-        with open(stats_path, "w") as f:
-            f.write("Category,Count,Percentage\n")
-            
-            total = len(stage1_results['ids'])
-            f.write(f"Total sequences,{total},100.00\n")
-            
-            f.write("\n# Stage 1 - Level 0 Classification\n")
-            cazy_count = len(stage1_results['positive_ids'])
-            non_cazy_count = total - cazy_count
-            f.write(f"CAZy,{cazy_count},{cazy_count/total*100:.2f}\n")
-            f.write(f"Non-CAZy,{non_cazy_count},{non_cazy_count/total*100:.2f}\n")
-            
-            if stage2_results and cazy_count > 0:
-                f.write("\n# Stage 2 - Level 1 Classification (CAZy samples only)\n")
-                class_counts = stage2_results['predictions'].sum(axis=0)
-                for j, class_name in enumerate(self.level1_classes):
-                    count = int(class_counts[j])
-                    f.write(f"{class_name},{count},{count/cazy_count*100:.2f}\n")
-        
+        os.makedirs(output_dir, exist_ok=True)
+        level0_map, level1_map, level2_map = self._build_result_maps(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            level2_results=level2_results,
+        )
+
+        stats_path = Path(output_dir) / f"{output_name}_statistics.tsv"
+        with open(stats_path, "w", newline="") as f:
+            writer = csv.writer(f, delimiter="\t")
+            writer.writerow(["level", "category", "count", "denominator", "percentage"])
+
+            total_sequences = len(level0_results["ids"])
+            cazy_count = sum(1 for row in level0_map.values() if row["pred_is_cazy"])
+            writer.writerow(["level0", "cazy", cazy_count, total_sequences, f"{(100.0 * cazy_count / max(total_sequences, 1)):.2f}"])
+            writer.writerow(["level0", "non_cazy", total_sequences - cazy_count, total_sequences, f"{(100.0 * (total_sequences - cazy_count) / max(total_sequences, 1)):.2f}"])
+
+            level1_denominator = len(level1_map)
+            if level1_denominator > 0:
+                class_counts = {class_name: 0 for class_name in self.level1_classes}
+                for row in level1_map.values():
+                    for class_name in row["predicted_classes"]:
+                        class_counts[class_name] += 1
+                for class_name in self.level1_classes:
+                    count = class_counts[class_name]
+                    writer.writerow(["level1", class_name, count, level1_denominator, f"{(100.0 * count / level1_denominator):.2f}"])
+
+            level2_denominator = len(level2_map)
+            if level2_denominator > 0:
+                assigned_sequences = sum(
+                    1 for row in level2_map.values() if row["predicted_families"]
+                )
+                writer.writerow([
+                    "level2",
+                    "sequences_with_family_prediction",
+                    assigned_sequences,
+                    level2_denominator,
+                    f"{(100.0 * assigned_sequences / level2_denominator):.2f}",
+                ])
+
+                major_class_counts = {class_name: 0 for class_name in self.level1_classes}
+                family_counts = {}
+                for row in level2_map.values():
+                    for family_result in row["predicted_families"]:
+                        major_class_counts[family_result["major_class"]] += 1
+                        family_label = family_result["family_label"]
+                        family_counts[family_label] = family_counts.get(family_label, 0) + 1
+
+                for class_name in self.level1_classes:
+                    count = major_class_counts[class_name]
+                    if count > 0:
+                        writer.writerow(["level2", class_name, count, level2_denominator, f"{(100.0 * count / level2_denominator):.2f}"])
+
+                for family_label in sorted(family_counts):
+                    count = family_counts[family_label]
+                    writer.writerow(["level2_family", family_label, count, level2_denominator, f"{(100.0 * count / level2_denominator):.2f}"])
+
         print(f"Saved statistics to {stats_path}")
+
+    def save_level1_embeddings(
+        self,
+        level1_results: Optional[Dict],
+        output_dir: str,
+        output_name: str,
+    ):
+        if not level1_results or level1_results["embeddings"] is None:
+            return
+
+        emb_path = f"{output_dir}/{output_name}_level1_embeddings.npy"
+        np.save(emb_path, level1_results["embeddings"])
+        print(f"   Saved Level 1 embeddings to {emb_path}")
+
+        emb_csv_path = f"{output_dir}/{output_name}_level1_embeddings.csv"
+        with open(emb_csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            for seq_id, emb in zip(level1_results["ids"], level1_results["embeddings"]):
+                writer.writerow([seq_id, *emb.tolist()])
+        print(f"   Saved Level 1 embeddings CSV to {emb_csv_path}")
     
     def predict(
         self,
@@ -454,6 +667,15 @@ class CAALMPredictor:
         level1_thresholds: Optional[List[float]] = None,
         level1_thresholds_file: Optional[str] = None,
         level1_global_threshold: float = 0.5,
+        level2_model_path: str = "./models/level2/model.pt",
+        level2_families: Optional[List[str]] = None,
+        level2_faiss_dir: str = "./models/level2/faiss",
+        level2_label_tsv_dir: str = "./models/level2/refdb",
+        level2_label_column: str = "label",
+        level2_id_column: str = "sequence_id",
+        level2_k: int = 3,
+        level2_batch_size: int = 512,
+        level2_device: Optional[str] = None,
         batch_size: int = 8,
         max_length: int = 1024,
         output_dir: str = "./outputs",
@@ -463,36 +685,38 @@ class CAALMPredictor:
     ):
         sequences, ids = self.load_sequences_from_fasta(test_fasta)
 
-        stage1_results = None
-        stage2_results = None
+        level0_results = None
+        level1_results = None
+        level2_results = None
+        need_level1_embeddings = True
         
         print(f"\n{'='*60}")
-        print("STAGE 1: Level 0 Classification (CAZy vs Non-CAZy)")
+        print("LEVEL 0: Classification (CAZy vs Non-CAZy)")
         print(f"{'='*60}")
 
         self.load_level0_model(level0_model_path)
 
         print(f"\nRunning on {len(sequences)} sequences from {test_fasta}")
 
-        stage1_results = self.predict_stage1(
+        level0_results = self.predict_level0(
             sequences=sequences,
             ids=ids,
             batch_size=batch_size,
             max_length=max_length,
             threshold=level0_threshold,
-            save_embeddings=save_embeddings,
+            save_embeddings=False,
             dataloader_workers=dataloader_workers,
         )
         
-        self.stage1_results = stage1_results
-        self.positive_ids = stage1_results['positive_ids']
+        self.level0_results = level0_results
+        self.positive_ids = level0_results['positive_ids']
         
         if len(self.positive_ids) > 0:
             positive_sequences = [self.all_sequences[id] for id in self.positive_ids if id in self.all_sequences]
             positive_ids_list = [id for id in self.positive_ids if id in self.all_sequences]
                     
             print(f"\n{'='*60}")
-            print("STAGE 2: Level 1 Classification (GT, GH, CBM, CE, PL, AA)")
+            print("LEVEL 1: Classification (GT, GH, CBM, CE, PL, AA)")
             print(f"{'='*60}")
 
             self.load_level1_model(level1_model_path)
@@ -500,7 +724,7 @@ class CAALMPredictor:
             print(f"\nRunning on {len(positive_sequences)} positive sequences")
 
             if len(positive_sequences) > 0:
-                stage2_results = self.predict_stage2(
+                level1_results = self.predict_level1(
                     sequences=positive_sequences,
                     ids=positive_ids_list,
                     batch_size=batch_size,
@@ -508,25 +732,60 @@ class CAALMPredictor:
                     thresholds=level1_thresholds,
                     thresholds_file=level1_thresholds_file,
                     global_threshold=level1_global_threshold,
-                    save_embeddings=save_embeddings,
+                    save_embeddings=need_level1_embeddings,
                     dataloader_workers=dataloader_workers,
                 )
-                self.stage2_results = stage2_results
+                self.level1_results = level1_results
+
+                candidate_families = (
+                    [level2_families for _ in level1_results["ids"]]
+                    if level2_families
+                    else level1_results["predicted_labels"]
+                )
+
+                print(f"\n{'='*60}")
+                print("LEVEL 2: Retrieval Prediction")
+                print(f"{'='*60}")
+
+                level2_results = self.predict_level2(
+                    embeddings=level1_results["embeddings"],
+                    ids=level1_results["ids"],
+                    families=level2_families,
+                    candidate_families=candidate_families,
+                    checkpoint_path=level2_model_path,
+                    faiss_dir=level2_faiss_dir,
+                    label_tsv_dir=level2_label_tsv_dir,
+                    label_column=level2_label_column,
+                    id_column=level2_id_column,
+                    k=level2_k,
+                    projection_batch_size=level2_batch_size,
+                    level2_device=level2_device,
+                )
+                self.level2_results = level2_results
         
         print("\n" + "="*60)
         print("PREDICTION COMPLETE!")
         print("="*60)
 
-        self.save_final_results(
-            stage1_results=stage1_results,
-            stage2_results=stage2_results,
+        self.save_prediction_outputs(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            level2_results=level2_results,
             output_dir=output_dir,
-            output_name=output_name
+            output_name=output_name,
         )
-        
+
+        if save_embeddings:
+            self.save_level1_embeddings(
+                level1_results=level1_results,
+                output_dir=output_dir,
+                output_name=output_name
+            )
+
         self.save_statistics(
-            stage1_results=stage1_results,
-            stage2_results=stage2_results,
+            level0_results=level0_results,
+            level1_results=level1_results,
+            level2_results=level2_results,
             output_dir=output_dir,
-            output_name=output_name
+            output_name=output_name,
         )

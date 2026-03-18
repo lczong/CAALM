@@ -26,6 +26,25 @@ def main():
                         help='Per-class thresholds (6 values)')
     parser.add_argument('--level1-thresholds-file', dest='level1_thresholds_file',
                         help='JSON file with per-class thresholds')
+
+    parser.add_argument('--level2-model', default='./models/level2/model.pt',
+                        help='Path to level2 projection checkpoint')
+    parser.add_argument('--level2-families', nargs='*',
+                        help='Override level2 retrieval families; defaults to each sequence\'s level1 predictions')
+    parser.add_argument('--level2-faiss-dir', default='./models/level2/faiss',
+                        help='Directory containing per-family FAISS indices named <family>.faiss')
+    parser.add_argument('--level2-label-tsv-dir', default='./models/level2/refdb',
+                        help='Directory containing family label TSVs such as <family>_labels.tsv')
+    parser.add_argument('--level2-label-column', default='label',
+                        help='Label column in the level2 reference TSVs')
+    parser.add_argument('--level2-id-column', default='sequence_id',
+                        help='Sequence ID column in the level2 reference TSVs')
+    parser.add_argument('--level2-k', type=int, default=3,
+                        help='Neighbors to retrieve per major class for level2 ranking')
+    parser.add_argument('--level2-batch-size', type=int, default=512,
+                        help='Batch size for level2 projection')
+    parser.add_argument('--level2-device',
+                        help='Torch device for level2 projection (defaults to checkpoint device)')
     
     parser.add_argument('--batch-size', type=int, default=2,
                         help='Batch size for both models')
@@ -41,7 +60,7 @@ def main():
     parser.add_argument('--output-dir', default='./outputs',
                         help='Output directory')
     parser.add_argument('--output-name', default='test',
-                        help='Prefix for output files')
+                        help='Prefix for predictions/probability output files')
     parser.add_argument('--save-embeddings', action='store_true', default=False,
                         help='Save embeddings')
     
@@ -62,6 +81,15 @@ def main():
         level1_thresholds=args.level1_thresholds,
         level1_thresholds_file=args.level1_thresholds_file,
         level1_global_threshold=args.level1_threshold,
+        level2_model_path=args.level2_model,
+        level2_families=args.level2_families,
+        level2_faiss_dir=args.level2_faiss_dir,
+        level2_label_tsv_dir=args.level2_label_tsv_dir,
+        level2_label_column=args.level2_label_column,
+        level2_id_column=args.level2_id_column,
+        level2_k=args.level2_k,
+        level2_batch_size=args.level2_batch_size,
+        level2_device=args.level2_device,
         batch_size=args.batch_size,
         max_length=args.max_length,
         output_dir=args.output_dir,
