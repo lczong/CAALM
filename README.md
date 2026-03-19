@@ -10,23 +10,51 @@
 
 2.  **Set Up a Virtual Environment (Recommended)**
     ```bash
-    conda create -n caalm python=3.11
+    conda create -n caalm python=3.10
     conda activate caalm
     ```
 
-3.  **Install the Package**
+3.  **Install PyTorch**
 
-    Install CAALM and its dependencies with pip (from `pyproject.toml`). Choose either the CPU or GPU build of FAISS:
+    Choose the build that matches your hardware:
 
     ```bash
-    # CPU
-    pip install ".[cpu]"
+    # CUDA 12.6
+    pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126
 
-    # GPU
-    pip install ".[gpu]"
+    # CPU only
+    pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
     ```
 
-4.  **Download Model Assets**
+4.  **Install FAISS**
+
+    FAISS is recommended to be installed via Conda:
+
+    ```bash
+    # GPU
+    conda install faiss-gpu=1.13.2 -c pytorch
+
+    # CPU
+    conda install faiss-cpu=1.13.2 -c pytorch
+    ```
+
+    If you prefer pip for CPU-only FAISS, you can skip this step and use the pip extras below instead.
+
+5.  **Install the Package**
+
+    If you installed FAISS via Conda in the previous step:
+
+    ```bash
+    pip install .
+    ```
+
+    If you skipped the Conda FAISS step and want CPU-only FAISS via pip:
+
+    ```bash
+    pip install ".[cpu]"
+    ```
+
+6.  **Download Model Assets**
 
     Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root using the Hugging Face CLI:
 

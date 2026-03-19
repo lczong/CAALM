@@ -9,20 +9,19 @@ description = "Carbohydrate Activity Annotation with protein Language Models"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Licheng Zong", email = "lczong@connect.ust.hk" },
+    { name = "Licheng Zong", email = "lczong@cuhk.edu.hk" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "tqdm",
-    "numpy",
-    "biopython",
-    "torch",
-    "transformers",
+    "tqdm>=4.67",
+    "numpy>=1.26",
+    "biopython>=1.86",
+    "torch>=2.6.0",
+    "transformers>=4.55.0",
 ]
 
 [project.optional-dependencies]
-gpu = ["faiss-gpu"]
-cpu = ["faiss-cpu"]
+cpu = ["faiss-cpu>=1.7"]
 
 [project.scripts]
 caalm = "caalm.predict:main"
