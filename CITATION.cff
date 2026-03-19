@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use CAALM in your research, please cite this software."
+type: software
+title: "CAALM: Carbohydrate Activity Annotation with protein Language Models"
+version: 1.0.0
+date-released: "2026-03-18"
+license: Apache-2.0
+repository-code: "https://github.com/lczong/CAALM"
+authors:
+  - family-names: Zong
+    given-names: Licheng
+
+# Uncomment and fill in when the paper is published:
+# preferred-citation:
+#   type: article
+#   title: ""
+#   authors:
+#     - family-names: Zong
+#       given-names: Licheng
+#   journal: ""
+#   year:
+#   doi: ""

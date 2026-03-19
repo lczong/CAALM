@@ -10,25 +10,60 @@
 
 2.  **Set Up a Virtual Environment (Recommended)**
     ```bash
-    conda create -n caalm
+    conda create -n caalm python=3.10
     conda activate caalm
     ```
 
-3.  **Install Dependencies**
+3.  **Install PyTorch**
+
+    Choose the build that matches your hardware:
+
+    ```bash
+    # CUDA 12.6
+    pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126
+
+    # CPU only
+    pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
     ```
-    tqdm
-    numpy
-    biopython
-    torch
-    transformers
-    faiss-cpu  # or faiss-gpu for level2 retrieval
+
+4.  **Install FAISS**
+
+    FAISS is recommended to be installed via Conda:
+
+    ```bash
+    # GPU
+    conda install faiss-gpu=1.13.2 -c pytorch
+
+    # CPU
+    conda install faiss-cpu=1.13.2 -c pytorch
     ```
 
-4.  **Download Model Assets**
+    If you prefer pip for CPU-only FAISS, you can skip this step and use the pip extras below instead.
 
-    Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository and save it locally as a directory named `models` in the project root.
+5.  **Install the Package**
 
-    The expected layout is:
+    If you installed FAISS via Conda in the previous step:
+
+    ```bash
+    pip install .
+    ```
+
+    If you skipped the Conda FAISS step and want CPU-only FAISS via pip:
+
+    ```bash
+    pip install ".[cpu]"
+    ```
+
+6.  **Download Model Assets**
+
+    Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root:
+
+    ```bash
+    pip install huggingface_hub
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('lczong/CAALM', local_dir='models')"
+    ```
+
+    The expected layout after download is:
 
     ```text
     models/
@@ -54,10 +89,16 @@ If Level 1 predicts multiple classes such as `GH|CBM`, Level 2 searches both maj
 
 ### Example Command
 
-With the local model assets in this repo:
+A convenience script is provided to run the example with one command:
 
 ```bash
-python src/predict.py \
+./scripts/predict_example.sh
+```
+
+Or invoke the CLI directly with the local model assets:
+
+```bash
+caalm \
   --input example/example.fasta \
   --level0-model models/level0 \
   --level1-model models/level1 \
@@ -73,6 +114,12 @@ If your environment does not allow multiprocessing dataloader workers, add:
 
 ```bash
 --num-workers 0
+```
+
+On HPC systems with user-level pip installs (`~/.local`), broken packages can leak into the conda environment and cause import errors. Prefix your command with `PYTHONNOUSERSITE=1` to prevent this:
+
+```bash
+PYTHONNOUSERSITE=1 caalm ...
 ```
 
 ### Model Sources

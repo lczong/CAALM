@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-python src/predict.py \
+caalm \
   --input example/example.fasta \
   --level0-model models/level0 \
   --level1-model models/level1 \

@@ -1,6 +1,8 @@
 import argparse
-from caalm import CAALMPredictor
-from utils import log_gpu_count
+from . import __version__
+from .predictor import CAALMPredictor
+from .utils import log_gpu_count
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -8,16 +10,18 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
+    parser.add_argument('-v', '--version', action='version', version=__version__)
+
     parser.add_argument('--level0-model', dest='level0_model',
                         help='Path to level0 classification model')
     parser.add_argument('--level1-model', dest='level1_model',
                         help='Path to level1 classification model')
     parser.add_argument('--input', required=True, help='Path to input FASTA file')
-    
+
     parser.add_argument('--level0-threshold', dest='level0_threshold',
                         type=float, default=0.5,
                         help='Threshold for level0 classification')
-    
+
     parser.add_argument('--level1-threshold', dest='level1_threshold',
                         type=float, default=0.5,
                         help='Global threshold for level1 classification')
@@ -45,7 +49,7 @@ def main():
                         help='Batch size for level2 projection')
     parser.add_argument('--level2-device',
                         help='Torch device for level2 projection (defaults to checkpoint device)')
-    
+
     parser.add_argument('--batch-size', type=int, default=2,
                         help='Batch size for both models')
     parser.add_argument('--max-length', type=int, default=1024,
@@ -56,23 +60,23 @@ def main():
                         help='Mixed precision')
     parser.add_argument('--num-workers', type=int, default=4,
                         help='Number of dataloader workers')
-    
+
     parser.add_argument('--output-dir', default='./outputs',
                         help='Output directory')
     parser.add_argument('--output-name', default='test',
                         help='Prefix for predictions/probability output files')
     parser.add_argument('--save-embeddings', action='store_true', default=False,
                         help='Save embeddings')
-    
+
     args = parser.parse_args()
-    
+
     log_gpu_count()
-    
+
     predictor = CAALMPredictor(
         device=args.device,
         mixed_precision=args.mixed_precision
     )
-    
+
     predictor.predict(
         test_fasta=args.input,
         level0_model_path=args.level0_model,
