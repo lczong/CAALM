@@ -56,11 +56,11 @@
 
 6.  **Download Model Assets**
 
-    Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root using the Hugging Face CLI:
+    Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root:
 
     ```bash
     pip install huggingface_hub
-    huggingface-cli download lczong/CAALM --local-dir models
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('lczong/CAALM', local_dir='models')"
     ```
 
     The expected layout after download is:
