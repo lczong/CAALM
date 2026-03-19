@@ -116,6 +116,12 @@ If your environment does not allow multiprocessing dataloader workers, add:
 --num-workers 0
 ```
 
+On HPC systems with user-level pip installs (`~/.local`), broken packages can leak into the conda environment and cause import errors. Prefix your command with `PYTHONNOUSERSITE=1` to prevent this:
+
+```bash
+PYTHONNOUSERSITE=1 caalm ...
+```
+
 ### Model Sources
 
 - The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local directory named `models`.
