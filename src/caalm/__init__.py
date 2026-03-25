@@ -1,5 +1,5 @@
 __version__ = "1.0.0"
 
-from .predictor import CAALMPredictor
+from .pipeline import PredictionPipeline
 
-__all__ = ["CAALMPredictor"]
+__all__ = ["PredictionPipeline"]
