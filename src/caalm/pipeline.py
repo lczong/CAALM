@@ -28,7 +28,6 @@ class PredictionPipeline:
         self.all_ids: list[str] = []
         self.level0_results = None
         self.level1_results = None
-        self.level2_results = None
         self.retrieval_results = None
         self.positive_ids: set[str] = set()
 
@@ -64,7 +63,6 @@ class PredictionPipeline:
         self.all_ids = ids
         self.level0_results = None
         self.level1_results = None
-        self.level2_results = None
         self.retrieval_results = None
         self.positive_ids = set()
 
@@ -147,7 +145,6 @@ class PredictionPipeline:
                     device_name=level2_device,
                     level1_classes=self.level1_classes,
                 )
-                self.level2_results = retrieval_results
                 self.retrieval_results = retrieval_results
 
                 assigned_count = sum(

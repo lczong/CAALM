@@ -135,7 +135,7 @@ class SequenceClassifier:
         if self.model is None:
             return
 
-        self.model.to("cpu")
+        del self.model
         self.model = None
         self.tokenizer = None
         self.data_collator = None
@@ -160,7 +160,7 @@ class SequenceClassifier:
             shuffle=False,
             num_workers=dataloader_workers,
             collate_fn=self.data_collator,
-            pin_memory=(self.device == "cuda"),
+            pin_memory=str(self.device).startswith("cuda"),
         )
 
         all_probs = []

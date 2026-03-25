@@ -222,8 +222,7 @@ def gather_neighbor_hits(
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}.")
 
-    queries = np.ascontiguousarray(projected.astype(np.float32, copy=True))
-    faiss.normalize_L2(queries)
+    queries = np.ascontiguousarray(projected, dtype=np.float32)
 
     family_hits: Dict[str, List[List[NeighborHit]]] = {}
     for family, ref in references.items():

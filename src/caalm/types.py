@@ -10,7 +10,10 @@ class DictLikeDataclass:
     """Small compatibility layer for older dict-style result access."""
 
     def __getitem__(self, key: str) -> Any:
-        return getattr(self, key)
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key) from None
 
     def get(self, key: str, default: Any = None) -> Any:
         return getattr(self, key, default)

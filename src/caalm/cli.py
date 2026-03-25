@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Torch device for level2 projection (defaults to checkpoint device)",
     )
 
-    parser.add_argument("--batch-size", type=int, default=2, help="Batch size for both models")
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size for both models")
     parser.add_argument("--max-length", type=int, default=1024, help="Maximum sequence length")
     parser.add_argument("--device", choices=["cuda", "cpu"], help="Device (auto-detect if not specified)")
     parser.add_argument(
