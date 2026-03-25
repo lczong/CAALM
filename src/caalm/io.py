@@ -89,14 +89,19 @@ def write_prediction_outputs(
     output_dir: str,
     output_name: str,
     level1_classes: list[str],
+    *,
+    _precomputed_maps: Optional[tuple[dict[str, dict], dict[str, dict], dict[str, dict]]] = None,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
-    level0_map, level1_map, retrieval_map = build_result_maps(
-        level0_results=level0_results,
-        level1_results=level1_results,
-        retrieval_results=retrieval_results,
-        level1_classes=level1_classes,
-    )
+    if _precomputed_maps is not None:
+        level0_map, level1_map, retrieval_map = _precomputed_maps
+    else:
+        level0_map, level1_map, retrieval_map = build_result_maps(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            retrieval_results=retrieval_results,
+            level1_classes=level1_classes,
+        )
 
     predictions_path = Path(output_dir) / f"{output_name}_predictions.tsv"
     with open(predictions_path, "w", newline="") as f:
@@ -179,14 +184,19 @@ def write_statistics(
     output_dir: str,
     output_name: str,
     level1_classes: list[str],
+    *,
+    _precomputed_maps: Optional[tuple[dict[str, dict], dict[str, dict], dict[str, dict]]] = None,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
-    level0_map, level1_map, retrieval_map = build_result_maps(
-        level0_results=level0_results,
-        level1_results=level1_results,
-        retrieval_results=retrieval_results,
-        level1_classes=level1_classes,
-    )
+    if _precomputed_maps is not None:
+        level0_map, level1_map, retrieval_map = _precomputed_maps
+    else:
+        level0_map, level1_map, retrieval_map = build_result_maps(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            retrieval_results=retrieval_results,
+            level1_classes=level1_classes,
+        )
 
     stats_path = Path(output_dir) / f"{output_name}_statistics.tsv"
     with open(stats_path, "w", newline="") as f:

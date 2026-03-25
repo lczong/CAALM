@@ -4,6 +4,7 @@ from typing import Optional
 
 from .classifier import SequenceClassifier
 from .io import (
+    build_result_maps,
     load_sequences_from_fasta,
     write_level1_embeddings,
     write_prediction_outputs,
@@ -178,6 +179,13 @@ class PredictionPipeline:
         print("PREDICTION COMPLETE!")
         print("=" * 60)
 
+        result_maps = build_result_maps(
+            level0_results=level0_results,
+            level1_results=level1_results,
+            retrieval_results=retrieval_results,
+            level1_classes=self.level1_classes,
+        )
+
         write_prediction_outputs(
             level0_results=level0_results,
             level1_results=level1_results,
@@ -185,6 +193,7 @@ class PredictionPipeline:
             output_dir=output_dir,
             output_name=output_name,
             level1_classes=self.level1_classes,
+            _precomputed_maps=result_maps,
         )
 
         if save_embeddings:
@@ -201,6 +210,7 @@ class PredictionPipeline:
             output_dir=output_dir,
             output_name=output_name,
             level1_classes=self.level1_classes,
+            _precomputed_maps=result_maps,
         )
 
         return PredictionResult(
