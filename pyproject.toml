@@ -43,7 +43,7 @@ Issues = "https://github.com/lczong/CAALM/issues"
 cpu = ["faiss-cpu>=1.7"]
 
 [project.scripts]
-caalm = "caalm.predict:main"
+caalm = "caalm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

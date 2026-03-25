@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .types import RetrievalResult
+
 try:
     import faiss  # type: ignore
 except ImportError:
@@ -234,7 +236,9 @@ def gather_neighbor_hits(
         per_query_hits: List[List[NeighborHit]] = []
         for query_scores, query_indices in zip(scores, indices):
             hits: List[NeighborHit] = []
-            for rank, (score, neighbor_idx) in enumerate(zip(query_scores, query_indices), start=1):
+            for rank, (score, neighbor_idx) in enumerate(
+                zip(query_scores, query_indices), start=1
+            ):
                 if neighbor_idx < 0:
                     continue
                 hits.append(
@@ -346,21 +350,26 @@ def build_prediction_rows(
     return rows, ordered_cols
 
 
-def run_level2_prediction(
+def run_retrieval(
     seq_ids: Sequence[str],
     embeddings: np.ndarray,
-    checkpoint_path: Path,
-    families: Sequence[str],
-    faiss_dir: Path,
-    label_tsv_dir: Path,
+    checkpoint_path: Path | str,
+    families: Optional[Sequence[str]],
+    faiss_dir: Path | str,
+    label_tsv_dir: Path | str,
     candidate_families: Optional[Sequence[Sequence[str]]] = None,
     label_column: str = "label",
     id_column: str = "sequence_id",
     k: int = 3,
     batch_size: int = 512,
     device_name: Optional[str] = None,
-) -> Dict[str, object]:
-    normalized_families = normalize_families(families)
+    level1_classes: Optional[Sequence[str]] = None,
+) -> RetrievalResult:
+    checkpoint_path = Path(checkpoint_path)
+    faiss_dir = Path(faiss_dir)
+    label_tsv_dir = Path(label_tsv_dir)
+    families = level1_classes if families is None else families
+    normalized_families = normalize_families(families or [])
     if not normalized_families:
         raise ValueError("At least one family is required for level2 prediction.")
     if len(seq_ids) != len(embeddings):
@@ -399,11 +408,14 @@ def run_level2_prediction(
         candidate_families=candidate_families,
     )
 
-    return {
-        "ids": list(seq_ids),
-        "families": normalized_families,
-        "projected_embeddings": projected,
-        "rows": rows,
-        "columns": columns,
-        "device": str(device),
-    }
+    return RetrievalResult(
+        ids=list(seq_ids),
+        families=normalized_families,
+        projected_embeddings=projected,
+        rows=rows,
+        columns=columns,
+        device=str(device),
+    )
+
+
+run_level2_prediction = run_retrieval
