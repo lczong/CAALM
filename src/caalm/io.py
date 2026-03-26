@@ -302,21 +302,67 @@ def write_statistics(
     print(f"Saved statistics to {stats_path}")
 
 
+def write_embeddings_npy(
+    embeddings: Optional[np.ndarray],
+    output_dir: str,
+    output_name: str,
+    level_name: str,
+    label: str,
+) -> None:
+    if embeddings is None:
+        return
+
+    emb_path = Path(output_dir) / f"{output_name}_{level_name}_embeddings.npy"
+    np.save(emb_path, embeddings)
+    print(f"   Saved {label} embeddings to {emb_path}")
+
+
+def write_level0_embeddings(
+    level0_results: Optional[Level0Result],
+    output_dir: str,
+    output_name: str,
+) -> None:
+    if level0_results is None:
+        return
+
+    write_embeddings_npy(
+        embeddings=level0_results.embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level0",
+        label="Level 0",
+    )
+
+
 def write_level1_embeddings(
     level1_results: Optional[Level1Result],
     output_dir: str,
     output_name: str,
 ) -> None:
-    if level1_results is None or level1_results.embeddings is None:
+    if level1_results is None:
         return
 
-    emb_path = Path(output_dir) / f"{output_name}_level1_embeddings.npy"
-    np.save(emb_path, level1_results.embeddings)
-    print(f"   Saved Level 1 embeddings to {emb_path}")
+    write_embeddings_npy(
+        embeddings=level1_results.embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level1",
+        label="Level 1",
+    )
 
-    emb_csv_path = Path(output_dir) / f"{output_name}_level1_embeddings.csv"
-    with open(emb_csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for seq_id, emb in zip(level1_results.ids, level1_results.embeddings):
-            writer.writerow([seq_id, *emb.tolist()])
-    print(f"   Saved Level 1 embeddings CSV to {emb_csv_path}")
+
+def write_level2_embeddings(
+    level2_results: Optional[Level2Result],
+    output_dir: str,
+    output_name: str,
+) -> None:
+    if level2_results is None:
+        return
+
+    write_embeddings_npy(
+        embeddings=level2_results.projected_embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level2",
+        label="Level 2",
+    )

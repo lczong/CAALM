@@ -31,8 +31,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="prefix for output files (default: input filename stem)",
     )
     io_group.add_argument(
-        "--save-embeddings", action="store_true",
-        help="save level 1 embeddings to npy and csv",
+        "--save-level0-embeddings", action="store_true",
+        help="save level 0 embeddings to npy",
+    )
+    io_group.add_argument(
+        "--save-level1-embeddings", action="store_true",
+        help="save level 1 embeddings to npy",
+    )
+    io_group.add_argument(
+        "--save-level2-embeddings", action="store_true",
+        help="save level 2 projected embeddings to npy",
     )
 
     # -- Model paths ----------------------------------------------------------
@@ -192,7 +200,9 @@ def main() -> None:
         max_length=args.max_length,
         output_dir=args.output_dir,
         output_name=args.output_name,
-        save_embeddings=args.save_embeddings,
+        save_level1_embeddings=args.save_level1_embeddings,
+        save_level0_embeddings=args.save_level0_embeddings,
+        save_level2_embeddings=args.save_level2_embeddings,
         dataloader_workers=args.num_workers,
     )
 

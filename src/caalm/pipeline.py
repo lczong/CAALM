@@ -4,7 +4,9 @@ from .classifier import SequenceClassifier
 from .io import (
     build_result_maps,
     load_sequences_from_fasta,
+    write_level0_embeddings,
     write_level1_embeddings,
+    write_level2_embeddings,
     write_prediction_outputs,
     write_statistics,
 )
@@ -51,7 +53,9 @@ class PredictionPipeline:
         max_length: int = 1024,
         output_dir: str = "./outputs",
         output_name: str = "test",
-        save_embeddings: bool = False,
+        save_level1_embeddings: bool = False,
+        save_level0_embeddings: bool = False,
+        save_level2_embeddings: bool = False,
         dataloader_workers: int = 4,
     ) -> PredictionResult:
         records = load_sequences_from_fasta(test_fasta)
@@ -77,7 +81,7 @@ class PredictionPipeline:
             batch_size=batch_size,
             max_length=max_length,
             threshold=level0_threshold,
-            save_embeddings=False,
+            save_embeddings=save_level0_embeddings,
             dataloader_workers=dataloader_workers,
         )
         self.level0_results = level0_results
@@ -192,9 +196,23 @@ class PredictionPipeline:
             _precomputed_maps=result_maps,
         )
 
-        if save_embeddings:
+        if save_level0_embeddings:
+            write_level0_embeddings(
+                level0_results=level0_results,
+                output_dir=output_dir,
+                output_name=output_name,
+            )
+
+        if save_level1_embeddings:
             write_level1_embeddings(
                 level1_results=level1_results,
+                output_dir=output_dir,
+                output_name=output_name,
+            )
+
+        if save_level2_embeddings:
+            write_level2_embeddings(
+                level2_results=level2_results,
                 output_dir=output_dir,
                 output_name=output_name,
             )

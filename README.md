@@ -113,7 +113,13 @@ caalm input.fasta -b 16
 caalm input.fasta -b2 1024
 
 # Save level 1 embeddings for downstream analysis
-caalm input.fasta --save-embeddings
+caalm input.fasta --save-level1-embeddings
+
+# Save level 0 embeddings
+caalm input.fasta --save-level0-embeddings
+
+# Save level 2 projected embeddings
+caalm input.fasta --save-level2-embeddings
 ```
 
 ### Models
@@ -132,7 +138,7 @@ If `--level2-families` is omitted, Level 2 automatically uses each sequence's pr
 
 ### Outputs
 
-Each run writes three main files under `--output-dir` with the prefix `--output-name`.
+Each run writes three main files under `--output-dir` with the prefix `--output-name`. When requested, embedding arrays are also saved as `.npy` files only.
 
 `*_predictions.tsv`
 - `sequence_id`
@@ -155,3 +161,8 @@ Notes:
 
 `*_statistics.tsv`
 - Summary counts and percentages for Level 0, Level 1, and Level 2 outputs.
+
+Optional embedding outputs
+- `*_level0_embeddings.npy` when `--save-level0-embeddings` is used.
+- `*_level1_embeddings.npy` when `--save-level1-embeddings` is used.
+- `*_level2_embeddings.npy` when `--save-level2-embeddings` is used.

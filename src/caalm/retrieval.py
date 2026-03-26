@@ -156,11 +156,9 @@ def save_projected_embeddings(
     projected: np.ndarray,
     output_path: Path,
 ) -> None:
+    del seq_ids
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for seq_id, row in zip(seq_ids, projected):
-            writer.writerow([seq_id, *row.tolist()])
+    np.save(output_path, projected)
 
 
 def load_family_references(
