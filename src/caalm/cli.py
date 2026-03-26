@@ -3,8 +3,6 @@ import os
 import sys
 
 from . import __version__
-from .pipeline import PredictionPipeline
-from .utils import log_gpu_count
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -146,6 +144,19 @@ def main() -> None:
     # ---- default output name from input stem --------------------------------
     if args.output_name is None:
         args.output_name = os.path.splitext(os.path.basename(fasta_path))[0]
+
+    try:
+        from .pipeline import PredictionPipeline
+        from .utils import log_gpu_count
+    except ImportError:
+        sys.exit(
+            "PyTorch is required but not installed.\n"
+            "Install it first: https://pytorch.org/get-started/locally/\n"
+            "Or choose a version that matches your device: https://pytorch.org/get-started/previous-versions/\n"
+            "Quick install:\n"
+            "  pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126  # CUDA 12.6\n"
+            "  pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu    # CPU only"
+        )
 
     log_gpu_count()
 

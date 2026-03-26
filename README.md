@@ -16,7 +16,7 @@
 
 3.  **Install PyTorch**
 
-    Choose the build that matches your hardware:
+    Follow the installation below, or choose the build that matches your device ([official guide](https://pytorch.org/get-started/locally/) | [previous versions](https://pytorch.org/get-started/previous-versions/))
 
     ```bash
     # CUDA 12.6
