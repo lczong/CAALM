@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .types import RetrievalResult
+from .types import Level2Result
 
 try:
     import faiss  # type: ignore
@@ -373,7 +373,7 @@ def build_prediction_rows(
     return rows, ordered_cols
 
 
-def run_retrieval(
+def run_level2(
     seq_ids: Sequence[str],
     embeddings: np.ndarray,
     checkpoint_path: Path | str,
@@ -387,7 +387,7 @@ def run_retrieval(
     batch_size: int = 512,
     device_name: Optional[str] = None,
     level1_classes: Optional[Sequence[str]] = None,
-) -> RetrievalResult:
+) -> Level2Result:
     checkpoint_path = Path(checkpoint_path)
     faiss_dir = Path(faiss_dir)
     label_tsv_dir = Path(label_tsv_dir)
@@ -446,7 +446,7 @@ def run_retrieval(
         candidate_families=candidate_families,
     )
 
-    return RetrievalResult(
+    return Level2Result(
         ids=list(seq_ids),
         families=normalized_families,
         projected_embeddings=projected,
@@ -456,4 +456,4 @@ def run_retrieval(
     )
 
 
-run_level2_prediction = run_retrieval
+run_level2_prediction = run_level2

@@ -8,7 +8,7 @@ from .io import (
     write_prediction_outputs,
     write_statistics,
 )
-from .retrieval import run_retrieval
+from .retrieval import run_level2
 from .types import PredictionResult
 
 
@@ -27,7 +27,7 @@ class PredictionPipeline:
         self.all_ids: list[str] = []
         self.level0_results = None
         self.level1_results = None
-        self.retrieval_results = None
+        self.level2_results = None
         self.positive_ids: set[str] = set()
 
     def predict(
@@ -60,7 +60,7 @@ class PredictionPipeline:
         self.all_ids = ids
         self.level0_results = None
         self.level1_results = None
-        self.retrieval_results = None
+        self.level2_results = None
         self.positive_ids = set()
 
         print(f"\n{'='*60}")
@@ -84,7 +84,7 @@ class PredictionPipeline:
         self.classifier.unload_model()
 
         level1_results = None
-        retrieval_results = None
+        level2_results = None
         positive_records = [
             record
             for record, is_positive in zip(records, level0_results.positive_mask)
@@ -127,7 +127,7 @@ class PredictionPipeline:
                 print("LEVEL 2: Retrieval Prediction")
                 print(f"{'='*60}")
 
-                retrieval_results = run_retrieval(
+                level2_results = run_level2(
                     seq_ids=level1_results.ids,
                     embeddings=level1_results.embeddings,
                     checkpoint_path=level2_model_path,
@@ -140,11 +140,11 @@ class PredictionPipeline:
                     k=level2_k,
                     level1_classes=self.level1_classes,
                 )
-                self.retrieval_results = retrieval_results
+                self.level2_results = level2_results
 
                 assigned_count = sum(
                     1
-                    for row in retrieval_results.rows
+                    for row in level2_results.rows
                     if any(
                         details.get("predicted_family")
                         for details in row.get("per_major_class", {}).values()
@@ -156,10 +156,10 @@ class PredictionPipeline:
                     f"   Assigned labels: {assigned_count} "
                     f"({assigned_count/len(level1_results.ids)*100:.2f}%)"
                 )
-                for family in retrieval_results.families:
+                for family in level2_results.families:
                     family_count = sum(
                         1
-                        for row in retrieval_results.rows
+                        for row in level2_results.rows
                         if row.get("per_major_class", {}).get(family, {}).get(
                             "predicted_family"
                         )
@@ -176,14 +176,14 @@ class PredictionPipeline:
         result_maps = build_result_maps(
             level0_results=level0_results,
             level1_results=level1_results,
-            retrieval_results=retrieval_results,
+            level2_results=level2_results,
             level1_classes=self.level1_classes,
         )
 
         write_prediction_outputs(
             level0_results=level0_results,
             level1_results=level1_results,
-            retrieval_results=retrieval_results,
+            level2_results=level2_results,
             output_dir=output_dir,
             output_name=output_name,
             level1_classes=self.level1_classes,
@@ -200,7 +200,7 @@ class PredictionPipeline:
         write_statistics(
             level0_results=level0_results,
             level1_results=level1_results,
-            retrieval_results=retrieval_results,
+            level2_results=level2_results,
             output_dir=output_dir,
             output_name=output_name,
             level1_classes=self.level1_classes,
@@ -210,5 +210,5 @@ class PredictionPipeline:
         return PredictionResult(
             level0=level0_results,
             level1=level1_results,
-            retrieval=retrieval_results,
+            level2=level2_results,
         )

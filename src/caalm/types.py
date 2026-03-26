@@ -32,7 +32,7 @@ class Level1Result:
 
 
 @dataclass
-class RetrievalResult:
+class Level2Result:
     ids: list[str]
     families: list[str]
     projected_embeddings: np.ndarray
@@ -45,4 +45,4 @@ class RetrievalResult:
 class PredictionResult:
     level0: Level0Result
     level1: Optional[Level1Result]
-    retrieval: Optional[RetrievalResult]
+    level2: Optional[Level2Result]
