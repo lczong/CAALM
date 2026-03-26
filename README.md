@@ -26,11 +26,15 @@
     pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
     ```
 
-4.  **Install FAISS (Optional: GPU)**
+4.  **Install FAISS**
 
-    The CPU version of FAISS is installed automatically with the package. If you want GPU-accelerated FAISS, install it via Conda **before** installing the package:
+    Choose the build that matches your hardware:
 
     ```bash
+    # CPU only
+    conda install faiss-cpu=1.13.2 -c pytorch
+
+    # GPU
     conda install faiss-gpu=1.13.2 -c pytorch
     ```
 
