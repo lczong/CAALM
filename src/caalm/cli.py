@@ -1,8 +1,8 @@
 import argparse
+import os
+import sys
 
 from . import __version__
-from .pipeline import PredictionPipeline
-from .utils import log_gpu_count
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -10,117 +10,153 @@ def build_parser() -> argparse.ArgumentParser:
         description="CAALM: Predict CAZymes and CAZyme classes from protein sequences",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-
     parser.add_argument("-v", "--version", action="version", version=__version__)
 
-    parser.add_argument("--level0-model", dest="level0_model", help="Path to level0 classification model")
-    parser.add_argument("--level1-model", dest="level1_model", help="Path to level1 classification model")
-    parser.add_argument("--input", required=True, help="Path to input FASTA file")
-
-    parser.add_argument(
-        "--level0-threshold",
-        dest="level0_threshold",
-        type=float,
-        default=0.5,
-        help="Threshold for level0 classification",
+    # -- Input / Output -------------------------------------------------------
+    io_group = parser.add_argument_group("input/output")
+    io_group.add_argument(
+        "input", nargs="?", default=None,
+        help="path to input FASTA file",
+    )
+    io_group.add_argument(
+        "-i", "--input", dest="input_flag", default=None,
+        help="path to input FASTA file (alternative to positional)",
+    )
+    io_group.add_argument(
+        "-o", "--output-dir", default="./outputs",
+        help="output directory",
+    )
+    io_group.add_argument(
+        "--output-name", default=None,
+        help="prefix for output files (default: input filename stem)",
+    )
+    io_group.add_argument(
+        "--save-embeddings", action="store_true",
+        help="save level 1 embeddings to npy and csv",
     )
 
-    parser.add_argument(
-        "--level1-threshold",
-        dest="level1_threshold",
-        type=float,
-        default=0.5,
-        help="Global threshold for level1 classification",
+    # -- Model paths ----------------------------------------------------------
+    model_group = parser.add_argument_group("model paths")
+    model_group.add_argument(
+        "--level0-model", default="./models/level0",
+        help="path to level 0 classification model",
     )
-    parser.add_argument(
-        "--level1-thresholds",
-        dest="level1_thresholds",
-        type=float,
-        nargs="*",
-        help="Per-class thresholds (6 values)",
+    model_group.add_argument(
+        "--level1-model", default="./models/level1",
+        help="path to level 1 classification model",
     )
-    parser.add_argument(
+    model_group.add_argument(
+        "--level2-model", default="./models/level2/model.pt",
+        help="path to level 2 projection checkpoint",
+    )
+
+    # -- Thresholds -----------------------------------------------------------
+    thr_group = parser.add_argument_group("thresholds")
+    thr_group.add_argument(
+        "--level0-threshold", type=float, default=0.5,
+        help="threshold for level 0 classification",
+    )
+    thr_group.add_argument(
+        "--level1-threshold", type=float, default=0.5,
+        help="global threshold for level 1 classification",
+    )
+    thr_group.add_argument(
+        "--level1-thresholds", type=float, nargs=6,
+        help="per-class thresholds: GT GH CBM CE PL AA",
+    )
+    thr_group.add_argument(
         "--level1-thresholds-file",
-        dest="level1_thresholds_file",
         help="JSON file with per-class thresholds",
     )
 
-    parser.add_argument(
-        "--level2-model",
-        default="./models/level2/model.pt",
-        help="Path to level2 projection checkpoint",
+    # -- Level 2 retrieval ----------------------------------------------------
+    l2_group = parser.add_argument_group("level 2 retrieval")
+    l2_group.add_argument(
+        "--level2-families", nargs="*",
+        help="override retrieval families; defaults to level 1 predictions",
     )
-    parser.add_argument(
-        "--level2-families",
-        nargs="*",
-        help="Override level2 retrieval families; defaults to each sequence's level1 predictions",
+    l2_group.add_argument(
+        "--level2-faiss-dir", default="./models/level2/faiss",
+        help="directory containing <family>.faiss indices",
     )
-    parser.add_argument(
-        "--level2-faiss-dir",
-        default="./models/level2/faiss",
-        help="Directory containing per-family FAISS indices named <family>.faiss",
+    l2_group.add_argument(
+        "--level2-label-tsv-dir", default="./models/level2/refdb",
+        help="directory containing <family>_labels.tsv files",
     )
-    parser.add_argument(
-        "--level2-label-tsv-dir",
-        default="./models/level2/refdb",
-        help="Directory containing family label TSVs such as <family>_labels.tsv",
+    l2_group.add_argument(
+        "--level2-label-column", default="label",
+        help="label column in reference TSVs",
     )
-    parser.add_argument(
-        "--level2-label-column",
-        default="label",
-        help="Label column in the level2 reference TSVs",
+    l2_group.add_argument(
+        "--level2-id-column", default="sequence_id",
+        help="sequence ID column in reference TSVs",
     )
-    parser.add_argument(
-        "--level2-id-column",
-        default="sequence_id",
-        help="Sequence ID column in the level2 reference TSVs",
-    )
-    parser.add_argument(
-        "--level2-k",
-        type=int,
-        default=3,
-        help="Neighbors to retrieve per major class for level2 ranking",
-    )
-    parser.add_argument(
-        "--level2-batch-size",
-        type=int,
-        default=512,
-        help="Batch size for level2 projection",
-    )
-    parser.add_argument(
-        "--level2-device",
-        help="Torch device for level2 projection (defaults to checkpoint device)",
+    l2_group.add_argument(
+        "-k", "--level2-k", type=int, default=3,
+        help="neighbors to retrieve per major class",
     )
 
-    parser.add_argument("--batch-size", type=int, default=2, help="Batch size for both models")
-    parser.add_argument("--max-length", type=int, default=1024, help="Maximum sequence length")
-    parser.add_argument("--device", choices=["cuda", "cpu"], help="Device (auto-detect if not specified)")
-    parser.add_argument(
-        "--mixed-precision",
-        choices=["bf16", "fp16", "fp32"],
-        default="fp32",
-        help="Mixed precision",
+    # -- Hardware / performance -----------------------------------------------
+    hw_group = parser.add_argument_group("hardware/performance")
+    hw_group.add_argument(
+        "-d", "--device",
+        help="torch device, e.g. cuda, cuda:0, cpu (auto-detect if omitted)",
     )
-    parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers")
+    hw_group.add_argument(
+        "--mixed-precision", choices=["bf16", "fp16", "fp32"], default="fp32",
+        help="mixed-precision mode",
+    )
+    hw_group.add_argument(
+        "-b", "--batch-size", type=int, default=8,
+        help="batch size for level 0/1 models",
+    )
+    hw_group.add_argument(
+        "--max-length", type=int, default=1024,
+        help="maximum sequence length (tokens)",
+    )
+    hw_group.add_argument(
+        "--num-workers", type=int, default=0,
+        help="dataloader worker processes",
+    )
 
-    parser.add_argument("--output-dir", default="./outputs", help="Output directory")
-    parser.add_argument(
-        "--output-name",
-        default="test",
-        help="Prefix for predictions/probability output files",
-    )
-    parser.add_argument(
-        "--save-embeddings",
-        action="store_true",
-        default=False,
-        help="Save embeddings",
-    )
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    # ---- resolve input (positional vs --input flag) -------------------------
+    fasta_path = args.input or args.input_flag
+    if fasta_path is None:
+        parser.error("a FASTA input file is required (positional or via -i/--input)")
+    if not os.path.exists(fasta_path):
+        parser.error(f"input file not found: {fasta_path}")
+
+    # ---- basic validation ---------------------------------------------------
+    if args.batch_size < 1:
+        parser.error(f"--batch-size must be >= 1, got {args.batch_size}")
+    if not 0 <= args.level0_threshold <= 1:
+        parser.error(f"--level0-threshold must be in [0, 1], got {args.level0_threshold}")
+    if not 0 <= args.level1_threshold <= 1:
+        parser.error(f"--level1-threshold must be in [0, 1], got {args.level1_threshold}")
+
+    # ---- default output name from input stem --------------------------------
+    if args.output_name is None:
+        args.output_name = os.path.splitext(os.path.basename(fasta_path))[0]
+
+    try:
+        from .pipeline import PredictionPipeline
+        from .utils import log_gpu_count
+    except ImportError:
+        sys.exit(
+            "PyTorch is required but not installed.\n"
+            "Install it first: https://pytorch.org/get-started/locally/\n"
+            "Or choose a version that matches your device: https://pytorch.org/get-started/previous-versions/\n"
+            "Quick install:\n"
+            "  pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126  # CUDA 12.6\n"
+            "  pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu    # CPU only"
+        )
 
     log_gpu_count()
 
@@ -129,7 +165,7 @@ def main() -> None:
         mixed_precision=args.mixed_precision,
     )
     pipeline.predict(
-        test_fasta=args.input,
+        test_fasta=fasta_path,
         level0_model_path=args.level0_model,
         level1_model_path=args.level1_model,
         level0_threshold=args.level0_threshold,
@@ -143,8 +179,6 @@ def main() -> None:
         level2_label_column=args.level2_label_column,
         level2_id_column=args.level2_id_column,
         level2_k=args.level2_k,
-        level2_batch_size=args.level2_batch_size,
-        level2_device=args.level2_device,
         batch_size=args.batch_size,
         max_length=args.max_length,
         output_dir=args.output_dir,

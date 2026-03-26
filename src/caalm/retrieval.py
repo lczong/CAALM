@@ -9,8 +9,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
 
-from .types import RetrievalResult
+from .types import Level2Result
 
 try:
     import faiss  # type: ignore
@@ -60,7 +61,10 @@ class ProjectionClassifier(nn.Module):
 def require_faiss() -> None:
     if faiss is None:
         raise ImportError(
-            "faiss is required for level2 retrieval but is not installed in this Python environment."
+            "faiss is required for level 2 retrieval but is not installed.\n"
+            "Install via pip or conda:\n"
+            "  pip install faiss-cpu                     # CPU\n"
+            "  conda install faiss-gpu -c pytorch        # GPU (conda recommended)"
         )
 
 
@@ -136,8 +140,9 @@ def project_embeddings(
 
     projected_batches: List[np.ndarray] = []
     tensor_embeddings = torch.from_numpy(input_array)
+    n_batches = (len(tensor_embeddings) + batch_size - 1) // batch_size
     with torch.no_grad():
-        for start in range(0, len(tensor_embeddings), batch_size):
+        for start in tqdm(range(0, len(tensor_embeddings), batch_size), total=n_batches, desc="Projecting"):
             end = start + batch_size
             batch = tensor_embeddings[start:end].to(device, non_blocking=True)
             projected = model.encode(batch).cpu().numpy().astype(np.float32, copy=False)
@@ -217,40 +222,63 @@ def gather_neighbor_hits(
     references: Dict[str, dict],
     projected: np.ndarray,
     k: int,
+    candidate_families: Optional[Sequence[Sequence[str]]] = None,
 ) -> Dict[str, List[List[NeighborHit]]]:
     require_faiss()
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}.")
 
-    queries = np.ascontiguousarray(projected.astype(np.float32, copy=True))
-    faiss.normalize_L2(queries)
+    n_queries = projected.shape[0]
+    queries = np.ascontiguousarray(projected, dtype=np.float32)
+
+    # Pre-normalize candidate families per query for fast lookup.
+    normalized_candidates: Optional[List[set]] = None
+    if candidate_families is not None:
+        normalized_candidates = [
+            {str(f).strip().upper() for f in cf if str(f).strip()}
+            for cf in candidate_families
+        ]
 
     family_hits: Dict[str, List[List[NeighborHit]]] = {}
-    for family, ref in references.items():
-        index = ref["index"]
-        labels = ref["labels"]
-        ref_ids = ref["sequence_ids"]
-        search_k = min(int(k), index.ntotal)
-        scores, indices = index.search(queries, search_k)
+    for family, ref in tqdm(references.items(), desc="Searching"):
+        # Determine which queries need this family.
+        if normalized_candidates is not None:
+            query_indices = [i for i in range(n_queries) if family in normalized_candidates[i]]
+        else:
+            query_indices = list(range(n_queries))
 
-        per_query_hits: List[List[NeighborHit]] = []
-        for query_scores, query_indices in zip(scores, indices):
-            hits: List[NeighborHit] = []
-            for rank, (score, neighbor_idx) in enumerate(
-                zip(query_scores, query_indices), start=1
-            ):
-                if neighbor_idx < 0:
-                    continue
-                hits.append(
-                    NeighborHit(
-                        family=family,
-                        label=labels[neighbor_idx],
-                        ref_sequence_id=ref_ids[neighbor_idx],
-                        score=float(score),
-                        rank=rank,
+        # Initialize all slots with empty lists.
+        per_query_hits: List[List[NeighborHit]] = [[] for _ in range(n_queries)]
+
+        if query_indices:
+            index = ref["index"]
+            labels = ref["labels"]
+            ref_ids = ref["sequence_ids"]
+            search_k = min(int(k), index.ntotal)
+
+            # Search only the subset of queries that need this family.
+            subset_queries = queries[query_indices]
+            scores, indices = index.search(subset_queries, search_k)
+
+            # Scatter results back to original positions.
+            for sub_idx, orig_idx in enumerate(query_indices):
+                hits: List[NeighborHit] = []
+                for rank, (score, neighbor_idx) in enumerate(
+                    zip(scores[sub_idx], indices[sub_idx]), start=1
+                ):
+                    if neighbor_idx < 0:
+                        continue
+                    hits.append(
+                        NeighborHit(
+                            family=family,
+                            label=labels[neighbor_idx],
+                            ref_sequence_id=ref_ids[neighbor_idx],
+                            score=float(score),
+                            rank=rank,
+                        )
                     )
-                )
-            per_query_hits.append(hits)
+                per_query_hits[orig_idx] = hits
+
         family_hits[family] = per_query_hits
 
     return family_hits
@@ -350,7 +378,7 @@ def build_prediction_rows(
     return rows, ordered_cols
 
 
-def run_retrieval(
+def run_level2(
     seq_ids: Sequence[str],
     embeddings: np.ndarray,
     checkpoint_path: Path | str,
@@ -364,11 +392,23 @@ def run_retrieval(
     batch_size: int = 512,
     device_name: Optional[str] = None,
     level1_classes: Optional[Sequence[str]] = None,
-) -> RetrievalResult:
+) -> Level2Result:
     checkpoint_path = Path(checkpoint_path)
     faiss_dir = Path(faiss_dir)
     label_tsv_dir = Path(label_tsv_dir)
-    families = level1_classes if families is None else families
+
+    # When the user did not override families, infer the minimal set from
+    # candidate_families so we only load the FAISS indices that are actually
+    # needed (e.g. 2 instead of all 6).
+    if families is None:
+        if candidate_families is not None:
+            needed: set[str] = set()
+            for cf in candidate_families:
+                needed.update(str(f).strip().upper() for f in cf if str(f).strip())
+            families = [f for f in (level1_classes or []) if f in needed]
+        if not families:
+            families = list(level1_classes or [])
+
     normalized_families = normalize_families(families or [])
     if not normalized_families:
         raise ValueError("At least one family is required for level2 prediction.")
@@ -381,10 +421,14 @@ def run_retrieval(
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Missing level2 checkpoint: {checkpoint_path}")
 
+    print(f"🔬 Loading Level 2 Retrieval Model from {checkpoint_path}")
     bootstrap_device = torch.device("cpu")
     ckpt = load_checkpoint(checkpoint_path, bootstrap_device)
     device = choose_device(device_name, ckpt)
     model = build_model_from_checkpoint(ckpt, device)
+    print(f"   Level 2 model loaded successfully (device: {device})")
+
+    print(f"\nProjecting {len(seq_ids)} embeddings through level 2 model")
 
     projected = project_embeddings(
         model=model,
@@ -393,6 +437,7 @@ def run_retrieval(
         device=device,
         batch_size=batch_size,
     )
+    print(f"\nSearching {len(normalized_families)} family indices (k={k})")
     references = load_family_references(
         families=normalized_families,
         faiss_dir=faiss_dir,
@@ -400,7 +445,10 @@ def run_retrieval(
         id_column=id_column,
         label_column=label_column,
     )
-    family_hits = gather_neighbor_hits(references=references, projected=projected, k=k)
+    family_hits = gather_neighbor_hits(
+        references=references, projected=projected, k=k,
+        candidate_families=candidate_families,
+    )
     rows, columns = build_prediction_rows(
         seq_ids=seq_ids,
         families=normalized_families,
@@ -408,7 +456,7 @@ def run_retrieval(
         candidate_families=candidate_families,
     )
 
-    return RetrievalResult(
+    return Level2Result(
         ids=list(seq_ids),
         families=normalized_families,
         projected_embeddings=projected,
@@ -418,4 +466,4 @@ def run_retrieval(
     )
 
 
-run_level2_prediction = run_retrieval
+run_level2_prediction = run_level2

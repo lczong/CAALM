@@ -1,41 +1,17 @@
-from __future__ import annotations
-
-from dataclasses import dataclass, fields
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
 
-class DictLikeDataclass:
-    """Small compatibility layer for older dict-style result access."""
-
-    def __getitem__(self, key: str) -> Any:
-        return getattr(self, key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return getattr(self, key, default)
-
-    def keys(self) -> list[str]:
-        return [field.name for field in fields(self)]
-
-    def items(self) -> list[tuple[str, Any]]:
-        return [(key, getattr(self, key)) for key in self.keys()]
-
-    def values(self) -> list[Any]:
-        return [getattr(self, key) for key in self.keys()]
-
-    def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and hasattr(self, key)
-
-
 @dataclass
-class SequenceRecord(DictLikeDataclass):
+class SequenceRecord:
     sequence_id: str
     sequence: str
 
 
 @dataclass
-class Level0Result(DictLikeDataclass):
+class Level0Result:
     ids: list[str]
     probabilities: np.ndarray
     predicted_labels: list[str]
@@ -46,7 +22,7 @@ class Level0Result(DictLikeDataclass):
 
 
 @dataclass
-class Level1Result(DictLikeDataclass):
+class Level1Result:
     ids: list[str]
     probabilities: np.ndarray
     predictions: np.ndarray
@@ -56,7 +32,7 @@ class Level1Result(DictLikeDataclass):
 
 
 @dataclass
-class RetrievalResult(DictLikeDataclass):
+class Level2Result:
     ids: list[str]
     families: list[str]
     projected_embeddings: np.ndarray
@@ -66,7 +42,7 @@ class RetrievalResult(DictLikeDataclass):
 
 
 @dataclass
-class PredictionResult(DictLikeDataclass):
+class PredictionResult:
     level0: Level0Result
     level1: Optional[Level1Result]
-    retrieval: Optional[RetrievalResult]
+    level2: Optional[Level2Result]

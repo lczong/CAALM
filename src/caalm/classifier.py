@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import os
 from typing import Optional, Sequence
@@ -59,6 +57,9 @@ class SequenceClassifier:
         self.mixed_precision = mixed_precision
         print(f"Device: {self.device}, Mixed Precision: {mixed_precision}")
 
+        if str(self.device).startswith("cuda"):
+            torch.backends.cudnn.benchmark = True
+
         self.model = None
         self.tokenizer = None
         self.data_collator = None
@@ -74,7 +75,7 @@ class SequenceClassifier:
             model = AutoModelForSequenceClassification.from_pretrained(
                 "lczong/CAALM",
                 subfolder=preferred_subfolder,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
             return model
         except Exception as exc:
@@ -88,7 +89,7 @@ class SequenceClassifier:
             return AutoModelForSequenceClassification.from_pretrained(
                 "lczong/CAALM",
                 subfolder=legacy_subfolder,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
 
     def _finalize_loaded_model(self, model: torch.nn.Module) -> None:
@@ -105,7 +106,7 @@ class SequenceClassifier:
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
         else:
             print("No local level0 model path provided, will download from HuggingFace")
@@ -122,7 +123,7 @@ class SequenceClassifier:
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
         else:
             print("No local level1 model path provided, will download from HuggingFace")
@@ -135,7 +136,7 @@ class SequenceClassifier:
         if self.model is None:
             return
 
-        self.model.to("cpu")
+        del self.model
         self.model = None
         self.tokenizer = None
         self.data_collator = None
@@ -160,37 +161,53 @@ class SequenceClassifier:
             shuffle=False,
             num_workers=dataloader_workers,
             collate_fn=self.data_collator,
-            pin_memory=(self.device == "cuda"),
+            pin_memory=str(self.device).startswith("cuda"),
         )
 
         all_probs = []
         all_embs = [] if save_embeddings else None
 
+        # Register a forward hook on the base model to capture the last hidden
+        # state without requesting all 33 intermediate layers via
+        # output_hidden_states=True (which would waste ~660MB GPU RAM per batch).
+        _last_hidden: list[torch.Tensor] = []
+        _hook = None
+        if save_embeddings:
+            def _capture_last_hidden(module, args, output):
+                _last_hidden.append(output.last_hidden_state)
+
+            _hook = self.model.base_model.register_forward_hook(_capture_last_hidden)
+
+        # Extract device type ("cuda" or "cpu") for autocast — self.device may
+        # contain an index like "cuda:0" which autocast does not accept.
+        device_type = torch.device(self.device).type
+
         if (
             self.mixed_precision == "bf16"
-            and self.device == "cuda"
+            and device_type == "cuda"
             and torch.cuda.is_bf16_supported()
         ):
             autocast_dtype = torch.bfloat16
-        elif self.mixed_precision == "fp16" and self.device == "cuda":
+        elif self.mixed_precision == "fp16" and device_type == "cuda":
             autocast_dtype = torch.float16
         else:
             autocast_dtype = None
+
+        ctx = (
+            torch.amp.autocast(device_type=device_type, dtype=autocast_dtype)
+            if autocast_dtype is not None
+            else torch.amp.autocast(device_type=device_type, enabled=False)
+        )
 
         for batch in tqdm(loader, desc="Predicting"):
             input_ids = batch["input_ids"].to(self.device, non_blocking=True)
             attention_mask = batch["attention_mask"].to(self.device, non_blocking=True)
 
-            ctx = (
-                torch.amp.autocast(device_type=self.device, dtype=autocast_dtype)
-                if autocast_dtype is not None
-                else torch.amp.autocast(device_type=self.device, enabled=False)
-            )
             with ctx:
                 outputs = self.model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
-                    output_hidden_states=save_embeddings,
+                    output_hidden_states=False,
                     return_dict=True,
                 )
                 logits = outputs.logits
@@ -203,9 +220,11 @@ class SequenceClassifier:
                 all_probs.append(probs.detach().cpu())
 
                 if save_embeddings:
-                    hidden_states = outputs.hidden_states
-                    emb = hidden_states[-1][:, 0, :]
+                    emb = _last_hidden.pop()[:, 0, :]
                     all_embs.append(emb.detach().cpu())
+
+        if _hook is not None:
+            _hook.remove()
 
         probabilities = torch.cat(all_probs, dim=0).numpy()
         embeddings = torch.cat(all_embs, dim=0).numpy() if save_embeddings else None
