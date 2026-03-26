@@ -22,6 +22,18 @@ def load_sequences_from_fasta(fasta_file: str) -> list[SequenceRecord]:
     return records
 
 
+def round_nested_floats(value: object, digits: int = 5) -> object:
+    if isinstance(value, dict):
+        return {key: round_nested_floats(item, digits) for key, item in value.items()}
+    if isinstance(value, list):
+        return [round_nested_floats(item, digits) for item in value]
+    if isinstance(value, np.floating):
+        return round(float(value), digits)
+    if isinstance(value, float):
+        return round(value, digits)
+    return value
+
+
 def build_result_maps(
     level0_results: Level0Result,
     level1_results: Optional[Level1Result],
@@ -119,7 +131,7 @@ def write_prediction_outputs(
             writer.writerow(
                 [
                     seq_id,
-                    int(level0_row["pred_is_cazy"]),
+                    "CAZy" if level0_row["pred_is_cazy"] else "Non-CAZy",
                     "|".join(level1_row["predicted_classes"]) if level1_row else "",
                     (
                         ""
@@ -169,7 +181,7 @@ def write_prediction_outputs(
                     ),
                 },
             }
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(round_nested_floats(record)) + "\n")
 
     print(f"Saved probabilities to {probabilities_path}")
 
@@ -290,21 +302,67 @@ def write_statistics(
     print(f"Saved statistics to {stats_path}")
 
 
+def write_embeddings_npy(
+    embeddings: Optional[np.ndarray],
+    output_dir: str,
+    output_name: str,
+    level_name: str,
+    label: str,
+) -> None:
+    if embeddings is None:
+        return
+
+    emb_path = Path(output_dir) / f"{output_name}_{level_name}_embeddings.npy"
+    np.save(emb_path, embeddings)
+    print(f"   Saved {label} embeddings to {emb_path}")
+
+
+def write_level0_embeddings(
+    level0_results: Optional[Level0Result],
+    output_dir: str,
+    output_name: str,
+) -> None:
+    if level0_results is None:
+        return
+
+    write_embeddings_npy(
+        embeddings=level0_results.embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level0",
+        label="Level 0",
+    )
+
+
 def write_level1_embeddings(
     level1_results: Optional[Level1Result],
     output_dir: str,
     output_name: str,
 ) -> None:
-    if level1_results is None or level1_results.embeddings is None:
+    if level1_results is None:
         return
 
-    emb_path = Path(output_dir) / f"{output_name}_level1_embeddings.npy"
-    np.save(emb_path, level1_results.embeddings)
-    print(f"   Saved Level 1 embeddings to {emb_path}")
+    write_embeddings_npy(
+        embeddings=level1_results.embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level1",
+        label="Level 1",
+    )
 
-    emb_csv_path = Path(output_dir) / f"{output_name}_level1_embeddings.csv"
-    with open(emb_csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for seq_id, emb in zip(level1_results.ids, level1_results.embeddings):
-            writer.writerow([seq_id, *emb.tolist()])
-    print(f"   Saved Level 1 embeddings CSV to {emb_csv_path}")
+
+def write_level2_embeddings(
+    level2_results: Optional[Level2Result],
+    output_dir: str,
+    output_name: str,
+) -> None:
+    if level2_results is None:
+        return
+
+    write_embeddings_npy(
+        embeddings=level2_results.projected_embeddings,
+        output_dir=output_dir,
+        output_name=output_name,
+        level_name="level2",
+        label="Level 2",
+    )
