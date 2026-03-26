@@ -22,6 +22,18 @@ def load_sequences_from_fasta(fasta_file: str) -> list[SequenceRecord]:
     return records
 
 
+def round_nested_floats(value: object, digits: int = 5) -> object:
+    if isinstance(value, dict):
+        return {key: round_nested_floats(item, digits) for key, item in value.items()}
+    if isinstance(value, list):
+        return [round_nested_floats(item, digits) for item in value]
+    if isinstance(value, np.floating):
+        return round(float(value), digits)
+    if isinstance(value, float):
+        return round(value, digits)
+    return value
+
+
 def build_result_maps(
     level0_results: Level0Result,
     level1_results: Optional[Level1Result],
@@ -119,7 +131,7 @@ def write_prediction_outputs(
             writer.writerow(
                 [
                     seq_id,
-                    int(level0_row["pred_is_cazy"]),
+                    "CAZy" if level0_row["pred_is_cazy"] else "Non-CAZy",
                     "|".join(level1_row["predicted_classes"]) if level1_row else "",
                     (
                         ""
@@ -169,7 +181,7 @@ def write_prediction_outputs(
                     ),
                 },
             }
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(round_nested_floats(record)) + "\n")
 
     print(f"Saved probabilities to {probabilities_path}")
 

@@ -86,10 +86,10 @@ A convenience script is provided to run the example with one command:
 Or invoke the CLI directly:
 
 ```bash
-caalm example/example.fasta
+caalm input/example.fasta
 ```
 
-The output name defaults to the input filename stem (here `example`), and output files are written to `./outputs/`. To customise:
+The output name defaults to the input filename stem (here `example`, from `input/example.fasta`), and output files are written to `./outputs/`. To customise:
 
 ```bash
 caalm your_sequences.fasta -o results --output-name my_run
@@ -108,6 +108,9 @@ caalm input.fasta --mixed-precision bf16
 
 # Increase batch size for large-memory GPUs
 caalm input.fasta -b 16
+
+# Increase the level 2 projection batch size independently
+caalm input.fasta -b2 1024
 
 # Save level 1 embeddings for downstream analysis
 caalm input.fasta --save-embeddings
@@ -138,7 +141,7 @@ Each run writes three main files under `--output-dir` with the prefix `--output-
 - `pred_cazy_family`
 
 Notes:
-- `pred_is_cazy` is `1` for CAZy and `0` for non-CAZy.
+- `pred_is_cazy` is `CAZy` for CAZy sequences and `Non-CAZy` for non-CAZy sequences.
 - `pred_cazy_class` is empty for non-CAZy sequences.
 - `pred_cazy_family` is empty for non-CAZy sequences.
 - For multi-label Level 1 predictions, both `pred_cazy_class` and `pred_cazy_family` use `|` as the separator.
@@ -148,6 +151,7 @@ Notes:
 - `level0.prob_is_cazy`: probability from the binary classifier.
 - `level1.class_probabilities`: probabilities for `GT`, `GH`, `CBM`, `CE`, `PL`, and `AA`.
 - `level2.predicted_families`: family predictions for each predicted major class, including score, matched reference sequence, and vote count.
+- Saved probabilities and Level 2 scores are rounded to 5 decimal places.
 
 `*_statistics.tsv`
 - Summary counts and percentages for Level 0, Level 1, and Level 2 outputs.

@@ -46,6 +46,7 @@ class PredictionPipeline:
         level2_label_column: str = "label",
         level2_id_column: str = "sequence_id",
         level2_k: int = 3,
+        level2_batch_size: int = 512,
         batch_size: int = 8,
         max_length: int = 1024,
         output_dir: str = "./outputs",
@@ -138,6 +139,7 @@ class PredictionPipeline:
                     label_column=level2_label_column,
                     id_column=level2_id_column,
                     k=level2_k,
+                    batch_size=level2_batch_size,
                     level1_classes=self.level1_classes,
                 )
                 self.level2_results = level2_results

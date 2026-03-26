@@ -111,6 +111,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="batch size for level 0/1 models",
     )
     hw_group.add_argument(
+        "-b2", "--level2-batch-size", type=int, default=512,
+        help="batch size for the level 2 projection model",
+    )
+    hw_group.add_argument(
         "--max-length", type=int, default=1024,
         help="maximum sequence length (tokens)",
     )
@@ -136,6 +140,10 @@ def main() -> None:
     # ---- basic validation ---------------------------------------------------
     if args.batch_size < 1:
         parser.error(f"--batch-size must be >= 1, got {args.batch_size}")
+    if args.level2_batch_size < 1:
+        parser.error(
+            f"--level2-batch-size must be >= 1, got {args.level2_batch_size}"
+        )
     if not 0 <= args.level0_threshold <= 1:
         parser.error(f"--level0-threshold must be in [0, 1], got {args.level0_threshold}")
     if not 0 <= args.level1_threshold <= 1:
@@ -179,6 +187,7 @@ def main() -> None:
         level2_label_column=args.level2_label_column,
         level2_id_column=args.level2_id_column,
         level2_k=args.level2_k,
+        level2_batch_size=args.level2_batch_size,
         batch_size=args.batch_size,
         max_length=args.max_length,
         output_dir=args.output_dir,
