@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
 
 from .types import Level2Result
 
@@ -136,8 +137,9 @@ def project_embeddings(
 
     projected_batches: List[np.ndarray] = []
     tensor_embeddings = torch.from_numpy(input_array)
+    n_batches = (len(tensor_embeddings) + batch_size - 1) // batch_size
     with torch.no_grad():
-        for start in range(0, len(tensor_embeddings), batch_size):
+        for start in tqdm(range(0, len(tensor_embeddings), batch_size), total=n_batches, desc="Projecting"):
             end = start + batch_size
             batch = tensor_embeddings[start:end].to(device, non_blocking=True)
             projected = model.encode(batch).cpu().numpy().astype(np.float32, copy=False)
@@ -235,7 +237,7 @@ def gather_neighbor_hits(
         ]
 
     family_hits: Dict[str, List[List[NeighborHit]]] = {}
-    for family, ref in references.items():
+    for family, ref in tqdm(references.items(), desc="Searching"):
         # Determine which queries need this family.
         if normalized_candidates is not None:
             query_indices = [i for i in range(n_queries) if family in normalized_candidates[i]]
@@ -416,10 +418,14 @@ def run_level2(
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Missing level2 checkpoint: {checkpoint_path}")
 
+    print(f"🔬 Loading Level 2 Retrieval Model from {checkpoint_path}")
     bootstrap_device = torch.device("cpu")
     ckpt = load_checkpoint(checkpoint_path, bootstrap_device)
     device = choose_device(device_name, ckpt)
     model = build_model_from_checkpoint(ckpt, device)
+    print(f"   Level 2 model loaded successfully (device: {device})")
+
+    print(f"\nProjecting {len(seq_ids)} embeddings through level 2 model")
 
     projected = project_embeddings(
         model=model,
@@ -428,6 +434,7 @@ def run_level2(
         device=device,
         batch_size=batch_size,
     )
+    print(f"\nSearching {len(normalized_families)} family indices (k={k})")
     references = load_family_references(
         families=normalized_families,
         faiss_dir=faiss_dir,
