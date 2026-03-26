@@ -27,20 +27,17 @@ dependencies = [
     "tqdm>=4.67",
     "numpy>=1.26",
     "biopython>=1.86",
-    "torch>=2.6.0",
     "transformers>=4.55.0,<5",
     "pyyaml>=6.0",
     "jinja2>=3.1",
     "markupsafe>=2.0",
+    "faiss-cpu>=1.7",
 ]
 
 [project.urls]
 Homepage = "https://github.com/lczong/CAALM"
 Repository = "https://github.com/lczong/CAALM"
 Issues = "https://github.com/lczong/CAALM/issues"
-
-[project.optional-dependencies]
-cpu = ["faiss-cpu>=1.7"]
 
 [project.scripts]
 caalm = "caalm.cli:main"

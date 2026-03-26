@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum sequence length (tokens)",
     )
     hw_group.add_argument(
-        "--num-workers", type=int, default=4,
+        "--num-workers", type=int, default=0,
         help="dataloader worker processes",
     )
 

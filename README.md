@@ -26,32 +26,18 @@
     pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
     ```
 
-4.  **Install FAISS**
+4.  **Install FAISS (Optional: GPU)**
 
-    FAISS is recommended to be installed via Conda:
+    The CPU version of FAISS is installed automatically with the package. If you want GPU-accelerated FAISS, install it via Conda **before** installing the package:
 
     ```bash
-    # GPU
     conda install faiss-gpu=1.13.2 -c pytorch
-
-    # CPU
-    conda install faiss-cpu=1.13.2 -c pytorch
     ```
-
-    If you prefer pip for CPU-only FAISS, you can skip this step and use the pip extras below instead.
 
 5.  **Install the Package**
 
-    If you installed FAISS via Conda in the previous step:
-
     ```bash
     pip install .
-    ```
-
-    If you skipped the Conda FAISS step and want CPU-only FAISS via pip:
-
-    ```bash
-    pip install ".[cpu]"
     ```
 
 6.  **Download Model Assets**
@@ -59,7 +45,6 @@
     Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root:
 
     ```bash
-    pip install huggingface_hub
     python -c "from huggingface_hub import snapshot_download; snapshot_download('lczong/CAALM', local_dir='models')"
     ```
 
@@ -67,12 +52,12 @@
 
     ```text
     models/
-    ├── level0/
-    ├── level1/
+    ├── level0/          # Level 0 binary classifier
+    ├── level1/          # Level 1 multi-label classifier
     └── level2/
-        ├── model.pt
-        ├── faiss/
-        └── refdb/
+        ├── model.pt     # Level 2 projection checkpoint
+        ├── faiss/       # FAISS indices (<CLASS>.faiss)
+        └── refdb/       # Reference TSVs (<CLASS>_labels.tsv)
     ```
 
 ## 📖 Usage
@@ -81,7 +66,7 @@
 
 CAALM runs three levels in sequence:
 
-1. Level 0 predicts whether a sequence is CAZy or non-CAZy.
+1. Level 0 predicts whether a sequence is `CAZy` or `non-CAZy`.
 2. If Level 0 predicts CAZy, Level 1 predicts one or more major CAZy classes from `GT`, `GH`, `CBM`, `CE`, `PL`, and `AA`.
 3. Level 2 retrieves family labels from the FAISS index and reference database for each predicted Level 1 major class.
 
@@ -125,23 +110,19 @@ caalm input.fasta -b 16
 caalm input.fasta --save-embeddings
 ```
 
-If your environment does not allow multiprocessing dataloader workers, add:
+### Models
 
-```bash
---num-workers 0
-```
+The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local `models` directory (see Installation step 6). If local files are not found, Level 0 and Level 1 will try to download from Hugging Face automatically.
 
-On HPC systems with user-level pip installs (`~/.local`), broken packages can leak into the conda environment and cause import errors. Prefix your command with `PYTHONNOUSERSITE=1` to prevent this:
+| Level | Description | Default path | CLI override |
+|-------|-------------|-------------|--------------|
+| Level 0 | Binary CAZy / non-CAZy classifier | `./models/level0` | `--level0-model` |
+| Level 1 | Multi-label major class classifier | `./models/level1` | `--level1-model` |
+| Level 2 | Projection checkpoint | `./models/level2/model.pt` | `--level2-model` |
+| Level 2 | FAISS indices (`<CLASS>.faiss`) | `./models/level2/faiss` | `--level2-faiss-dir` |
+| Level 2 | Reference TSVs (`<CLASS>_labels.tsv`) | `./models/level2/refdb` | `--level2-label-tsv-dir` |
 
-```bash
-PYTHONNOUSERSITE=1 caalm ...
-```
-
-### Model Sources
-
-- The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local directory named `models`.
-- Model paths default to `./models/level0`, `./models/level1`, and `./models/level2/` but can be overridden with `--level0-model`, `--level1-model`, and `--level2-model`.
-- If local model files are not found, Level 0 and Level 1 will try to download from Hugging Face automatically.
+If `--level2-families` is omitted, Level 2 automatically uses each sequence's predicted Level 1 classes.
 
 ### Outputs
 
@@ -167,17 +148,3 @@ Notes:
 
 `*_statistics.tsv`
 - Summary counts and percentages for Level 0, Level 1, and Level 2 outputs.
-
-### Level 2 Inputs
-
-Level 2 expects:
-- a checkpoint from `--level2-model`
-- per-major-class FAISS indices in `--level2-faiss-dir`
-- per-major-class reference TSVs in `--level2-label-tsv-dir`
-
-The current repo layout uses:
-- `models/level2/model.pt`
-- `models/level2/faiss/<CLASS>.faiss`
-- `models/level2/refdb/<CLASS>_labels.tsv`
-
-If `--level2-families` is omitted, Level 2 automatically uses each sequence's predicted Level 1 classes.
