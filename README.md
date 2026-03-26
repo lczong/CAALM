@@ -16,7 +16,7 @@
 
 3.  **Install PyTorch**
 
-    Choose the build that matches your hardware:
+    Follow the installation below, or choose the build that matches your device ([official guide](https://pytorch.org/get-started/locally/) | [previous versions](https://pytorch.org/get-started/previous-versions/))
 
     ```bash
     # CUDA 12.6
@@ -28,30 +28,19 @@
 
 4.  **Install FAISS**
 
-    FAISS is recommended to be installed via Conda:
-
     ```bash
-    # GPU
-    conda install faiss-gpu=1.13.2 -c pytorch
+    # CPU (via pip or conda)
+    pip install faiss-cpu        # option 1
+    conda install faiss-cpu -c pytorch  # option 2
 
-    # CPU
-    conda install faiss-cpu=1.13.2 -c pytorch
+    # GPU (conda recommended — pip may not work correctly)
+    conda install faiss-gpu -c pytorch
     ```
-
-    If you prefer pip for CPU-only FAISS, you can skip this step and use the pip extras below instead.
 
 5.  **Install the Package**
 
-    If you installed FAISS via Conda in the previous step:
-
     ```bash
     pip install .
-    ```
-
-    If you skipped the Conda FAISS step and want CPU-only FAISS via pip:
-
-    ```bash
-    pip install ".[cpu]"
     ```
 
 6.  **Download Model Assets**
@@ -59,7 +48,6 @@
     Download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a directory named `models` in the project root:
 
     ```bash
-    pip install huggingface_hub
     python -c "from huggingface_hub import snapshot_download; snapshot_download('lczong/CAALM', local_dir='models')"
     ```
 
@@ -67,12 +55,12 @@
 
     ```text
     models/
-    ├── level0/
-    ├── level1/
+    ├── level0/          # Level 0 binary classifier
+    ├── level1/          # Level 1 multi-label classifier
     └── level2/
-        ├── model.pt
-        ├── faiss/
-        └── refdb/
+        ├── model.pt     # Level 2 projection checkpoint
+        ├── faiss/       # FAISS indices (<CLASS>.faiss)
+        └── refdb/       # Reference TSVs (<CLASS>_labels.tsv)
     ```
 
 ## 📖 Usage
@@ -81,7 +69,7 @@
 
 CAALM runs three levels in sequence:
 
-1. Level 0 predicts whether a sequence is CAZy or non-CAZy.
+1. Level 0 predicts whether a sequence is `CAZy` or `non-CAZy`.
 2. If Level 0 predicts CAZy, Level 1 predicts one or more major CAZy classes from `GT`, `GH`, `CBM`, `CE`, `PL`, and `AA`.
 3. Level 2 retrieves family labels from the FAISS index and reference database for each predicted Level 1 major class.
 
@@ -95,43 +83,62 @@ A convenience script is provided to run the example with one command:
 ./scripts/predict_example.sh
 ```
 
-Or invoke the CLI directly with the local model assets:
+Or invoke the CLI directly:
 
 ```bash
-caalm \
-  --input example/example.fasta \
-  --level0-model models/level0 \
-  --level1-model models/level1 \
-  --level2-model models/level2/model.pt \
-  --level2-faiss-dir models/level2/faiss \
-  --level2-label-tsv-dir models/level2/refdb \
-  --level2-label-column label \
-  --output-dir outputs \
-  --output-name example
+caalm input/example.fasta
 ```
 
-If your environment does not allow multiprocessing dataloader workers, add:
+The output name defaults to the input filename stem (here `example`, from `input/example.fasta`), and output files are written to `./outputs/`. To customise:
 
 ```bash
---num-workers 0
+caalm your_sequences.fasta -o results --output-name my_run
 ```
 
-On HPC systems with user-level pip installs (`~/.local`), broken packages can leak into the conda environment and cause import errors. Prefix your command with `PYTHONNOUSERSITE=1` to prevent this:
+Use `caalm --help` to see all options grouped by category.
+
+### Common Options
 
 ```bash
-PYTHONNOUSERSITE=1 caalm ...
+# Use a specific GPU
+caalm input.fasta -d cuda:0
+
+# Enable mixed precision for faster inference
+caalm input.fasta --mixed-precision bf16
+
+# Increase batch size for large-memory GPUs
+caalm input.fasta -b 16
+
+# Increase the level 2 projection batch size independently
+caalm input.fasta -b2 1024
+
+# Save level 1 embeddings for downstream analysis
+caalm input.fasta --save-level1-embeddings
+
+# Save level 0 embeddings
+caalm input.fasta --save-level0-embeddings
+
+# Save level 2 projected embeddings
+caalm input.fasta --save-level2-embeddings
 ```
 
-### Model Sources
+### Models
 
-- The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local directory named `models`.
-- Level 0 and Level 1 can also be loaded from local directories via `--level0-model` and `--level1-model`.
-- If `--level0-model` or `--level1-model` are omitted, the code will try to download those from Hugging Face automatically.
-- Level 2 uses the local retrieval assets under `models/level2`.
+The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local `models` directory (see Installation step 6). If local files are not found, Level 0 and Level 1 will try to download from Hugging Face automatically.
+
+| Level | Description | Default path | CLI override |
+|-------|-------------|-------------|--------------|
+| Level 0 | Binary CAZy / non-CAZy classifier | `./models/level0` | `--level0-model` |
+| Level 1 | Multi-label major class classifier | `./models/level1` | `--level1-model` |
+| Level 2 | Projection checkpoint | `./models/level2/model.pt` | `--level2-model` |
+| Level 2 | FAISS indices (`<CLASS>.faiss`) | `./models/level2/faiss` | `--level2-faiss-dir` |
+| Level 2 | Reference TSVs (`<CLASS>_labels.tsv`) | `./models/level2/refdb` | `--level2-label-tsv-dir` |
+
+If `--level2-families` is omitted, Level 2 automatically uses each sequence's predicted Level 1 classes.
 
 ### Outputs
 
-Each run writes three main files under `--output-dir` with the prefix `--output-name`.
+Each run writes three main files under `--output-dir` with the prefix `--output-name`. When requested, embedding arrays are also saved as `.npy` files only.
 
 `*_predictions.tsv`
 - `sequence_id`
@@ -140,7 +147,7 @@ Each run writes three main files under `--output-dir` with the prefix `--output-
 - `pred_cazy_family`
 
 Notes:
-- `pred_is_cazy` is `1` for CAZy and `0` for non-CAZy.
+- `pred_is_cazy` is `CAZy` for CAZy sequences and `Non-CAZy` for non-CAZy sequences.
 - `pred_cazy_class` is empty for non-CAZy sequences.
 - `pred_cazy_family` is empty for non-CAZy sequences.
 - For multi-label Level 1 predictions, both `pred_cazy_class` and `pred_cazy_family` use `|` as the separator.
@@ -150,20 +157,12 @@ Notes:
 - `level0.prob_is_cazy`: probability from the binary classifier.
 - `level1.class_probabilities`: probabilities for `GT`, `GH`, `CBM`, `CE`, `PL`, and `AA`.
 - `level2.predicted_families`: family predictions for each predicted major class, including score, matched reference sequence, and vote count.
+- Saved probabilities and Level 2 scores are rounded to 5 decimal places.
 
 `*_statistics.tsv`
 - Summary counts and percentages for Level 0, Level 1, and Level 2 outputs.
 
-### Level 2 Inputs
-
-Level 2 expects:
-- a checkpoint from `--level2-model`
-- per-major-class FAISS indices in `--level2-faiss-dir`
-- per-major-class reference TSVs in `--level2-label-tsv-dir`
-
-The current repo layout uses:
-- `models/level2/model.pt`
-- `models/level2/faiss/<CLASS>.faiss`
-- `models/level2/refdb/<CLASS>_labels.tsv`
-
-If `--level2-families` is omitted, Level 2 automatically uses each sequence's predicted Level 1 classes.
+Optional embedding outputs
+- `*_level0_embeddings.npy` when `--save-level0-embeddings` is used.
+- `*_level1_embeddings.npy` when `--save-level1-embeddings` is used.
+- `*_level2_embeddings.npy` when `--save-level2-embeddings` is used.

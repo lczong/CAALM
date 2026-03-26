@@ -1,9 +1,15 @@
-import torch
+try:
+    import torch
+except ImportError:
+    torch = None
 
 def log_gpu_count():
     print("="*60)
     print("GPU Information")
     print("="*60)
+    if torch is None:
+        print("PyTorch not installed - skipping GPU detection")
+        return
     if torch.cuda.is_available():
         gpu_count = torch.cuda.device_count()
         current_device = torch.cuda.current_device()
