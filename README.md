@@ -28,14 +28,13 @@
 
 4.  **Install FAISS**
 
-    Choose the build that matches your hardware:
-
     ```bash
-    # CPU only
-    conda install faiss-cpu=1.13.2 -c pytorch
+    # CPU (via pip or conda)
+    pip install faiss-cpu        # option 1
+    conda install faiss-cpu -c pytorch  # option 2
 
-    # GPU
-    conda install faiss-gpu=1.13.2 -c pytorch
+    # GPU (conda recommended — pip may not work correctly)
+    conda install faiss-gpu -c pytorch
     ```
 
 5.  **Install the Package**

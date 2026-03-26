@@ -61,8 +61,10 @@ class ProjectionClassifier(nn.Module):
 def require_faiss() -> None:
     if faiss is None:
         raise ImportError(
-            "faiss is required for level2 retrieval but is not installed. "
-            "Install via: conda install faiss-cpu -c pytorch  (or faiss-gpu for GPU support)"
+            "faiss is required for level 2 retrieval but is not installed.\n"
+            "Install via pip or conda:\n"
+            "  pip install faiss-cpu                     # CPU\n"
+            "  conda install faiss-gpu -c pytorch        # GPU (conda recommended)"
         )
 
 
