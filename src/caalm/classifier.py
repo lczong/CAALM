@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import os
 from typing import Optional, Sequence
@@ -59,6 +57,9 @@ class SequenceClassifier:
         self.mixed_precision = mixed_precision
         print(f"Device: {self.device}, Mixed Precision: {mixed_precision}")
 
+        if str(self.device).startswith("cuda"):
+            torch.backends.cudnn.benchmark = True
+
         self.model = None
         self.tokenizer = None
         self.data_collator = None
@@ -74,7 +75,7 @@ class SequenceClassifier:
             model = AutoModelForSequenceClassification.from_pretrained(
                 "lczong/CAALM",
                 subfolder=preferred_subfolder,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
             return model
         except Exception as exc:
@@ -88,7 +89,7 @@ class SequenceClassifier:
             return AutoModelForSequenceClassification.from_pretrained(
                 "lczong/CAALM",
                 subfolder=legacy_subfolder,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
 
     def _finalize_loaded_model(self, model: torch.nn.Module) -> None:
@@ -105,7 +106,7 @@ class SequenceClassifier:
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
         else:
             print("No local level0 model path provided, will download from HuggingFace")
@@ -122,7 +123,7 @@ class SequenceClassifier:
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForSequenceClassification.from_pretrained(
                 model_path,
-                torch_dtype=self.dtype,
+                dtype=self.dtype,
             )
         else:
             print("No local level1 model path provided, will download from HuggingFace")
@@ -177,21 +178,25 @@ class SequenceClassifier:
 
             _hook = self.model.base_model.register_forward_hook(_capture_last_hidden)
 
+        # Extract device type ("cuda" or "cpu") for autocast — self.device may
+        # contain an index like "cuda:0" which autocast does not accept.
+        device_type = torch.device(self.device).type
+
         if (
             self.mixed_precision == "bf16"
-            and self.device == "cuda"
+            and device_type == "cuda"
             and torch.cuda.is_bf16_supported()
         ):
             autocast_dtype = torch.bfloat16
-        elif self.mixed_precision == "fp16" and self.device == "cuda":
+        elif self.mixed_precision == "fp16" and device_type == "cuda":
             autocast_dtype = torch.float16
         else:
             autocast_dtype = None
 
         ctx = (
-            torch.amp.autocast(device_type=self.device, dtype=autocast_dtype)
+            torch.amp.autocast(device_type=device_type, dtype=autocast_dtype)
             if autocast_dtype is not None
-            else torch.amp.autocast(device_type=self.device, enabled=False)
+            else torch.amp.autocast(device_type=device_type, enabled=False)
         )
 
         for batch in tqdm(loader, desc="Predicting"):

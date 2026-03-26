@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import csv
 import json
 import os
@@ -55,9 +53,10 @@ def build_result_maps(
             candidate_major_classes = row.get("candidate_families")
             per_major_class = row.get("per_major_class", {})
             predicted_families = []
-            for major_class in (
+            split_classes = (
                 candidate_major_classes.split("|") if candidate_major_classes else []
-            ):
+            )
+            for major_class in split_classes:
                 major_class_result = per_major_class.get(major_class, {})
                 if major_class_result.get("predicted_family"):
                     predicted_families.append(
@@ -74,9 +73,7 @@ def build_result_maps(
 
             retrieval_map[row["sequence_id"]] = {
                 "predicted_families": predicted_families,
-                "candidate_major_classes": (
-                    candidate_major_classes.split("|") if candidate_major_classes else []
-                ),
+                "candidate_major_classes": split_classes,
             }
 
     return level0_map, level1_map, retrieval_map
