@@ -95,19 +95,34 @@ A convenience script is provided to run the example with one command:
 ./scripts/predict_example.sh
 ```
 
-Or invoke the CLI directly with the local model assets:
+Or invoke the CLI directly:
 
 ```bash
-caalm \
-  --input example/example.fasta \
-  --level0-model models/level0 \
-  --level1-model models/level1 \
-  --level2-model models/level2/model.pt \
-  --level2-faiss-dir models/level2/faiss \
-  --level2-label-tsv-dir models/level2/refdb \
-  --level2-label-column label \
-  --output-dir outputs \
-  --output-name example
+caalm example/example.fasta
+```
+
+The output name defaults to the input filename stem (here `example`), and output files are written to `./outputs/`. To customise:
+
+```bash
+caalm your_sequences.fasta -o results --output-name my_run
+```
+
+Use `caalm --help` to see all options grouped by category.
+
+### Common Options
+
+```bash
+# Use a specific GPU
+caalm input.fasta -d cuda:0
+
+# Enable mixed precision for faster inference
+caalm input.fasta --mixed-precision bf16
+
+# Increase batch size for large-memory GPUs
+caalm input.fasta -b 16
+
+# Save level 1 embeddings for downstream analysis
+caalm input.fasta --save-embeddings
 ```
 
 If your environment does not allow multiprocessing dataloader workers, add:
@@ -125,9 +140,8 @@ PYTHONNOUSERSITE=1 caalm ...
 ### Model Sources
 
 - The recommended setup is to download the full [CAALM](https://huggingface.co/lczong/CAALM) Hugging Face repository into a local directory named `models`.
-- Level 0 and Level 1 can also be loaded from local directories via `--level0-model` and `--level1-model`.
-- If `--level0-model` or `--level1-model` are omitted, the code will try to download those from Hugging Face automatically.
-- Level 2 uses the local retrieval assets under `models/level2`.
+- Model paths default to `./models/level0`, `./models/level1`, and `./models/level2/` but can be overridden with `--level0-model`, `--level1-model`, and `--level2-model`.
+- If local model files are not found, Level 0 and Level 1 will try to download from Hugging Face automatically.
 
 ### Outputs
 
