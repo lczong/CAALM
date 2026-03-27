@@ -1,5 +1,7 @@
 # CAALM: Carbohydrate Activity Annotation with protein Language Models
 
+[![PyPI](https://img.shields.io/pypi/v/caalm)](https://pypi.org/project/caalm/)
+
 ## ⚙️ Installation
 
 1.  **Clone the Repository**
