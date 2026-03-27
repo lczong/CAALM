@@ -42,7 +42,11 @@
 5.  **Install the Package**
 
     ```bash
-    pip install .
+    # From pip
+    pip install caalm # option 1
+    
+    # From this repository
+    pip install . # option 2
     ```
 
 6.  **Download Model Assets**
