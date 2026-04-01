@@ -1,5 +1,8 @@
 # CAALM: Carbohydrate Activity Annotation with protein Language Models
 
+[![PyPI](https://img.shields.io/pypi/v/caalm)](https://pypi.org/project/caalm/)
+[![Bioconda](https://img.shields.io/conda/vn/bioconda/caalm)](https://bioconda.github.io/recipes/caalm/README.html#package-package%20&#x27;caalm&#x27;)
+
 ## ⚙️ Installation
 
 1.  **Clone the Repository**
@@ -40,7 +43,11 @@
 5.  **Install the Package**
 
     ```bash
-    pip install .
+    # From pip
+    pip install caalm # option 1
+    
+    # From this repository
+    pip install . # option 2
     ```
 
 6.  **Download Model Assets**
