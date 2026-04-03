@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAALM Report</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif; background: #f5f6fa; color: #2c3e50; line-height: 1.6; }
+a { color: #4E79A7; text-decoration: none; }
+
+/* Header */
+.header { background: linear-gradient(135deg, #2c3e50, #34495e); color: #fff; padding: 24px 32px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.header h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: 0.5px; }
+.header .meta { font-size: 0.85rem; opacity: 0.8; text-align: right; }
+.header .meta span { display: block; }
+
+/* Container */
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* KPI Cards */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.kpi-card { background: #fff; border-radius: 8px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.kpi-card .label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; margin-bottom: 4px; }
+.kpi-card .value { font-size: 2rem; font-weight: 700; color: #2c3e50; }
+.kpi-card .sub { font-size: 0.85rem; color: #95a5a6; margin-top: 2px; }
+
+/* Chart grid */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.chart-box { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chart-box h3 { font-size: 0.95rem; color: #7f8c8d; margin-bottom: 8px; font-weight: 500; }
+.chart-container { width: 100%; height: 320px; }
+
+/* Table section */
+.table-section { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 24px; }
+.table-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.table-controls select, .table-controls input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; background: #fff; }
+.table-controls input { min-width: 240px; }
+.table-controls .count-label { font-size: 0.85rem; color: #95a5a6; margin-left: auto; }
+
+table.seq-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.seq-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; border-bottom: 2px solid #e9ecef; cursor: pointer; user-select: none; white-space: nowrap; }
+table.seq-table th:hover { background: #e9ecef; }
+table.seq-table th .sort-arrow { font-size: 0.7rem; margin-left: 4px; color: #bbb; }
+table.seq-table th .sort-arrow.active { color: #2c3e50; }
+table.seq-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+table.seq-table tr { cursor: pointer; transition: background 0.15s; }
+table.seq-table tr:hover { background: #f8f9fa; }
+table.seq-table tr.selected { background: #eef3f9; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; }
+.badge-cazy { background: #d4edda; color: #155724; }
+.badge-noncazy { background: #f8d7da; color: #721c24; }
+.badge-class { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 500; color: #fff; margin: 1px 2px; }
+
+.prob-bar { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; }
+.prob-text { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* Pagination */
+.pagination { display: flex; gap: 4px; align-items: center; justify-content: center; margin-top: 16px; }
+.pagination button { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.85rem; }
+.pagination button:hover { background: #f0f0f0; }
+.pagination button.active { background: #4E79A7; color: #fff; border-color: #4E79A7; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination .page-info { font-size: 0.85rem; color: #95a5a6; margin: 0 8px; }
+
+/* Detail panel */
+.detail-panel { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 24px; display: none; }
+.detail-panel.visible { display: block; }
+.detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.detail-header h2 { font-size: 1.2rem; font-weight: 600; }
+.detail-header .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #95a5a6; padding: 4px 8px; }
+.detail-header .close-btn:hover { color: #2c3e50; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.detail-chart { height: 280px; }
+.detail-subsection { margin-top: 16px; }
+.detail-subsection h4 { font-size: 0.9rem; color: #7f8c8d; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+table.family-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+table.family-table th { background: #f8f9fa; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e9ecef; }
+table.family-table td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+
+.seq-display { font-family: 'Courier New', Courier, monospace; font-size: 0.82rem; line-height: 1.5; word-break: break-all; background: #f8f9fa; padding: 12px; border-radius: 6px; max-height: 200px; overflow-y: auto; color: #555; }
+.seq-length { font-size: 0.85rem; color: #95a5a6; margin-bottom: 4px; }
+
+.not-evaluated { color: #95a5a6; font-style: italic; padding: 20px; text-align: center; }
+
+@media (max-width: 900px) {
+  .chart-grid { grid-template-columns: 1fr; }
+  .detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<script id="caalm-data" type="application/json">{{ data_json | safe }}</script>
+<script>{% include "echarts.min.js" %}</script>
+
+<script>
+const D = JSON.parse(document.getElementById('caalm-data').textContent);
+const CLASS_COLORS = { GT:'#4E79A7', GH:'#F28E2B', CBM:'#E15759', CE:'#76B7B2', PL:'#59A14F', AA:'#EDC948' };
+
+function familyColor(label) {
+  for (const cls of D.level1_classes) {
+    if (label.startsWith(cls)) return CLASS_COLORS[cls] || '#999';
+  }
+  return '#999';
+}
+</script>
+
+<div class="header">
+  <h1>CAALM Prediction Report</h1>
+  <div class="meta">
+    <span id="hdr-name"></span>
+    <span id="hdr-date"></span>
+    <span id="hdr-ver"></span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- KPI Cards -->
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="label">Total Sequences</div><div class="value" id="kpi-total"></div></div>
+    <div class="kpi-card"><div class="label">CAZy</div><div class="value" id="kpi-cazy"></div><div class="sub" id="kpi-cazy-pct"></div></div>
+    <div class="kpi-card"><div class="label">Non-CAZy</div><div class="value" id="kpi-noncazy"></div><div class="sub" id="kpi-noncazy-pct"></div></div>
+    <div class="kpi-card"><div class="label">Unique Families</div><div class="value" id="kpi-families"></div></div>
+  </div>
+
+  <!-- Dashboard Charts -->
+  <div class="chart-grid">
+    <div class="chart-box">
+      <h3>CAZy vs Non-CAZy</h3>
+      <div class="chart-container" id="chart-donut"></div>
+    </div>
+    <div class="chart-box">
+      <h3>Class Distribution</h3>
+      <div class="chart-container" id="chart-class"></div>
+    </div>
+    <div class="chart-box">
+      <h3>Family Distribution</h3>
+      <div class="chart-container" id="chart-family"></div>
+    </div>
+    <div class="chart-box">
+      <h3>Level 0 Probability Distribution</h3>
+      <div class="chart-container" id="chart-prob"></div>
+    </div>
+  </div>
+
+  <!-- Sequence Table -->
+  <div class="table-section">
+    <div class="table-controls">
+      <select id="filter-status">
+        <option value="all">All</option>
+        <option value="cazy">CAZy</option>
+        <option value="noncazy">Non-CAZy</option>
+      </select>
+      <input type="text" id="filter-search" placeholder="Search by sequence ID...">
+      <span class="count-label" id="table-count"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="seq-table">
+        <thead>
+          <tr>
+            <th data-col="id">Sequence ID <span class="sort-arrow" id="sort-id"></span></th>
+            <th data-col="status">Status <span class="sort-arrow" id="sort-status"></span></th>
+            <th data-col="classes">Classes</th>
+            <th data-col="families">Families</th>
+            <th data-col="prob">L0 Probability <span class="sort-arrow" id="sort-prob"></span></th>
+            <th data-col="length">Length <span class="sort-arrow" id="sort-length"></span></th>
+          </tr>
+        </thead>
+        <tbody id="seq-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- Detail Panel -->
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-header">
+      <h2 id="detail-title"></h2>
+      <button class="close-btn" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <h4 style="font-size:0.9rem;color:#7f8c8d;margin-bottom:8px">Level 0: CAZy Probability</h4>
+        <div class="detail-chart" id="detail-gauge"></div>
+      </div>
+      <div id="detail-radar-section">
+        <h4 style="font-size:0.9rem;color:#7f8c8d;margin-bottom:8px">Level 1: Class Probabilities</h4>
+        <div class="detail-chart" id="detail-radar"></div>
+      </div>
+    </div>
+    <div class="detail-subsection" id="detail-family-section">
+      <h4>Level 2: Family Predictions</h4>
+      <div id="detail-family-content"></div>
+    </div>
+    <div class="detail-subsection">
+      <h4>Amino Acid Sequence</h4>
+      <div class="seq-length" id="detail-seq-length"></div>
+      <div class="seq-display" id="detail-seq"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── KPI ────────────────────────────────────────────────────────
+document.getElementById('hdr-name').textContent = D.metadata.output_name;
+document.getElementById('hdr-date').textContent = D.metadata.generated_at;
+document.getElementById('hdr-ver').textContent = 'CAALM v' + D.metadata.version;
+
+const st = D.statistics.level0;
+document.getElementById('kpi-total').textContent = st.total;
+document.getElementById('kpi-cazy').textContent = st.cazy;
+document.getElementById('kpi-cazy-pct').textContent = (st.total ? (100*st.cazy/st.total).toFixed(1) : 0) + '%';
+document.getElementById('kpi-noncazy').textContent = st.non_cazy;
+document.getElementById('kpi-noncazy-pct').textContent = (st.total ? (100*st.non_cazy/st.total).toFixed(1) : 0) + '%';
+document.getElementById('kpi-families').textContent = Object.keys(D.statistics.level2_families).length;
+
+// ─── Charts ─────────────────────────────────────────────────────
+function initChart(id) { return echarts.init(document.getElementById(id)); }
+
+// Donut
+(function(){
+  const c = initChart('chart-donut');
+  c.setOption({
+    tooltip: { trigger:'item', formatter:'{b}: {c} ({d}%)' },
+    series: [{
+      type:'pie', radius:['45%','72%'], center:['50%','55%'],
+      label: { show:true, formatter:'{b}\n{c} ({d}%)' },
+      itemStyle: { borderRadius: 6, borderColor:'#fff', borderWidth:2 },
+      data: [
+        { value:st.cazy, name:'CAZy', itemStyle:{color:'#27ae60'} },
+        { value:st.non_cazy, name:'Non-CAZy', itemStyle:{color:'#e74c3c'} }
+      ]
+    }]
+  });
+  window.addEventListener('resize', ()=>c.resize());
+})();
+
+// Class distribution
+(function(){
+  const c = initChart('chart-class');
+  const classes = D.level1_classes;
+  const counts = classes.map(cl => D.statistics.level1[cl] || 0);
+  c.setOption({
+    tooltip: { trigger:'axis', axisPointer:{type:'shadow'} },
+    grid: { left:60, right:30, top:10, bottom:30 },
+    xAxis: { type:'value', minInterval:1 },
+    yAxis: { type:'category', data:classes.slice().reverse(), axisLabel:{fontSize:13} },
+    series: [{
+      type:'bar', barWidth:'55%',
+      data: counts.slice().reverse().map((v,i) => ({
+        value:v,
+        itemStyle:{ color:CLASS_COLORS[classes[classes.length-1-i]], borderRadius:[0,4,4,0] }
+      })),
+      label: { show:true, position:'right', fontSize:12, color:'#555' }
+    }]
+  });
+  window.addEventListener('resize', ()=>c.resize());
+})();
+
+// Family distribution
+(function(){
+  const c = initChart('chart-family');
+  const fams = D.statistics.level2_families;
+  const sorted = Object.entries(fams).sort((a,b)=>b[1]-a[1]);
+  const labels = sorted.map(e=>e[0]);
+  const values = sorted.map(e=>e[1]);
+  const opts = {
+    tooltip: { trigger:'axis', axisPointer:{type:'shadow'} },
+    grid: { left:80, right:30, top:10, bottom: labels.length>15 ? 50 : 30 },
+    xAxis: { type:'value', minInterval:1 },
+    yAxis: { type:'category', data:labels.slice().reverse(), axisLabel:{fontSize:12} },
+    series: [{
+      type:'bar', barMaxWidth:20,
+      data: values.slice().reverse().map((v,i)=>({
+        value:v,
+        itemStyle:{ color:familyColor(labels[labels.length-1-i]), borderRadius:[0,3,3,0] }
+      })),
+      label: { show:true, position:'right', fontSize:11, color:'#555' }
+    }]
+  };
+  if (labels.length > 15) {
+    opts.dataZoom = [{ type:'slider', yAxisIndex:0, start:0, end:100, right:10 }];
+  }
+  c.setOption(opts);
+  window.addEventListener('resize', ()=>c.resize());
+})();
+
+// Probability histogram
+(function(){
+  const c = initChart('chart-prob');
+  const probs = D.sequences.map(s => s.level0.prob_is_cazy);
+  const bins = 20;
+  const counts = new Array(bins).fill(0);
+  probs.forEach(p => { const idx = Math.min(Math.floor(p*bins), bins-1); counts[idx]++; });
+  const labels = [];
+  for (let i=0;i<bins;i++) labels.push(((i/bins)).toFixed(2)+'-'+((i+1)/bins).toFixed(2));
+  c.setOption({
+    tooltip: { trigger:'axis' },
+    grid: { left:50, right:20, top:10, bottom:60 },
+    xAxis: { type:'category', data:labels, axisLabel:{rotate:45, fontSize:10} },
+    yAxis: { type:'value', minInterval:1 },
+    series: [{
+      type:'bar', barWidth:'80%',
+      data: counts.map((v,i) => ({
+        value:v,
+        itemStyle:{ color: (i/bins)>=0.5 ? '#27ae60' : '#e74c3c' }
+      }))
+    }]
+  });
+  window.addEventListener('resize', ()=>c.resize());
+})();
+
+// ─── Table ──────────────────────────────────────────────────────
+const PAGE_SIZE = 50;
+let filtered = [...D.sequences];
+let sortCol = null, sortAsc = true;
+let currentPage = 0;
+let selectedId = null;
+
+function classBadges(classes) {
+  return classes.map(c =>
+    '<span class="badge-class" style="background:'+CLASS_COLORS[c]+'">'+c+'</span>'
+  ).join('');
+}
+
+function familyBadges(families) {
+  return families.map(f =>
+    '<span class="badge-class" style="background:'+familyColor(f.family_label)+'">'+f.family_label+'</span>'
+  ).join('');
+}
+
+function probBar(p) {
+  const pct = (p*100).toFixed(1);
+  const color = p >= 0.5 ? '#27ae60' : '#e74c3c';
+  return '<span class="prob-text">'+p.toFixed(5)+'</span> '+
+    '<span class="prob-bar" style="width:'+Math.max(pct*0.6,2)+'px;background:'+color+'"></span>';
+}
+
+function applyFilters() {
+  const status = document.getElementById('filter-status').value;
+  const search = document.getElementById('filter-search').value.toLowerCase();
+  filtered = D.sequences.filter(s => {
+    if (status === 'cazy' && !s.level0.pred_is_cazy) return false;
+    if (status === 'noncazy' && s.level0.pred_is_cazy) return false;
+    if (search && !s.id.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  if (sortCol) doSort(sortCol, false);
+  currentPage = 0;
+  renderTable();
+}
+
+function doSort(col, toggle) {
+  if (toggle) {
+    if (sortCol === col) sortAsc = !sortAsc;
+    else { sortCol = col; sortAsc = true; }
+  }
+  sortCol = col;
+  filtered.sort((a,b) => {
+    let va, vb;
+    if (col === 'id') { va = a.id; vb = b.id; }
+    else if (col === 'status') { va = a.level0.pred_is_cazy?1:0; vb = b.level0.pred_is_cazy?1:0; }
+    else if (col === 'prob') { va = a.level0.prob_is_cazy; vb = b.level0.prob_is_cazy; }
+    else if (col === 'length') { va = a.length; vb = b.length; }
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va-vb : vb-va;
+  });
+  document.querySelectorAll('.sort-arrow').forEach(el => { el.textContent=''; el.classList.remove('active'); });
+  const arrow = document.getElementById('sort-'+col);
+  if (arrow) { arrow.textContent = sortAsc ? '\u25B2' : '\u25BC'; arrow.classList.add('active'); }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('seq-tbody');
+  const start = currentPage * PAGE_SIZE;
+  const page = filtered.slice(start, start + PAGE_SIZE);
+  document.getElementById('table-count').textContent =
+    'Showing ' + (filtered.length ? start+1 : 0) + '-' + Math.min(start+PAGE_SIZE, filtered.length) + ' of ' + filtered.length;
+
+  tbody.innerHTML = page.map(s => {
+    const statusBadge = s.level0.pred_is_cazy
+      ? '<span class="badge badge-cazy">CAZy</span>'
+      : '<span class="badge badge-noncazy">Non-CAZy</span>';
+    return '<tr data-id="'+s.id+'"' + (s.id===selectedId?' class="selected"':'') + '>' +
+      '<td style="font-weight:500">'+s.id+'</td>' +
+      '<td>'+statusBadge+'</td>' +
+      '<td>'+classBadges(s.level1.predicted_classes)+'</td>' +
+      '<td>'+familyBadges(s.level2.predicted_families)+'</td>' +
+      '<td>'+probBar(s.level0.prob_is_cazy)+'</td>' +
+      '<td>'+s.length+' aa</td></tr>';
+  }).join('');
+
+  // Click handler
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => showDetail(tr.dataset.id));
+  });
+
+  renderPagination();
+}
+
+function renderPagination() {
+  const total = Math.ceil(filtered.length / PAGE_SIZE);
+  const div = document.getElementById('pagination');
+  if (total <= 1) { div.innerHTML = ''; return; }
+  let html = '<button '+(currentPage===0?'disabled':'')+' onclick="goPage('+(currentPage-1)+')">&laquo;</button>';
+  const maxBtns = 7;
+  let startP = Math.max(0, currentPage - Math.floor(maxBtns/2));
+  let endP = Math.min(total, startP + maxBtns);
+  if (endP - startP < maxBtns) startP = Math.max(0, endP - maxBtns);
+  for (let i=startP;i<endP;i++) {
+    html += '<button class="'+(i===currentPage?'active':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
+  }
+  html += '<button '+(currentPage>=total-1?'disabled':'')+' onclick="goPage('+(currentPage+1)+')">&raquo;</button>';
+  html += '<span class="page-info">Page '+(currentPage+1)+' of '+total+'</span>';
+  div.innerHTML = html;
+}
+
+function goPage(p) { currentPage = p; renderTable(); }
+
+// Sort click handlers
+document.querySelectorAll('th[data-col]').forEach(th => {
+  const col = th.dataset.col;
+  if (['id','status','prob','length'].includes(col)) {
+    th.addEventListener('click', () => { doSort(col, true); currentPage=0; renderTable(); });
+  }
+});
+
+document.getElementById('filter-status').addEventListener('change', applyFilters);
+document.getElementById('filter-search').addEventListener('input', applyFilters);
+
+// ─── Detail Panel ───────────────────────────────────────────────
+let gaugeChart = null, radarChart = null;
+
+function showDetail(seqId) {
+  const s = D.sequences.find(x => x.id === seqId);
+  if (!s) return;
+  selectedId = seqId;
+  renderTable();
+
+  const panel = document.getElementById('detail-panel');
+  panel.classList.add('visible');
+  document.getElementById('detail-title').textContent = s.id;
+
+  // Gauge
+  const gaugeEl = document.getElementById('detail-gauge');
+  if (gaugeChart) gaugeChart.dispose();
+  gaugeChart = echarts.init(gaugeEl);
+  gaugeChart.setOption({
+    series: [{
+      type: 'gauge', startAngle: 180, endAngle: 0,
+      min: 0, max: 1,
+      pointer: { show: true, length: '60%', width: 5 },
+      axisLine: {
+        lineStyle: {
+          width: 20,
+          color: [[0.5, '#e74c3c'], [0.75, '#f39c12'], [1, '#27ae60']]
+        }
+      },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      axisLabel: { distance: -35, fontSize: 12, color: '#999' },
+      detail: { valueAnimation: true, fontSize: 28, offsetCenter: [0, '30%'],
+        formatter: function(v){ return v.toFixed(5); }, color: '#333' },
+      data: [{ value: s.level0.prob_is_cazy }]
+    }]
+  });
+
+  // Radar
+  const radarSection = document.getElementById('detail-radar-section');
+  if (s.level1.evaluated) {
+    radarSection.style.display = '';
+    const radarEl = document.getElementById('detail-radar');
+    if (radarChart) radarChart.dispose();
+    radarChart = echarts.init(radarEl);
+    const indicator = D.level1_classes.map(c => ({
+      name: c, max: 1, color: CLASS_COLORS[c]
+    }));
+    const values = D.level1_classes.map(c => s.level1.class_probabilities[c] || 0);
+    radarChart.setOption({
+      radar: {
+        indicator: indicator,
+        shape: 'polygon',
+        splitNumber: 4,
+        axisName: { fontSize: 13, fontWeight: 500 },
+        splitArea: { areaStyle: { color: ['#fff','#f8f9fa','#fff','#f8f9fa'] } }
+      },
+      series: [{
+        type: 'radar',
+        data: [{
+          value: values,
+          areaStyle: { color: 'rgba(78,121,167,0.15)' },
+          lineStyle: { color: '#4E79A7', width: 2 },
+          itemStyle: { color: '#4E79A7' },
+          symbol: 'circle', symbolSize: 6
+        }]
+      }],
+      tooltip: {
+        trigger: 'item',
+        formatter: function(params) {
+          let html = '';
+          D.level1_classes.forEach((c,i) => {
+            html += '<span style="color:'+CLASS_COLORS[c]+'">&#9679;</span> '+c+': '+params.value[i].toFixed(5)+'<br/>';
+          });
+          return html;
+        }
+      }
+    });
+  } else {
+    radarSection.style.display = '';
+    const radarEl = document.getElementById('detail-radar');
+    if (radarChart) radarChart.dispose();
+    radarChart = null;
+    radarEl.innerHTML = '<div class="not-evaluated">Not evaluated (Non-CAZy)</div>';
+  }
+
+  // Family table
+  const famSection = document.getElementById('detail-family-section');
+  const famContent = document.getElementById('detail-family-content');
+  if (s.level2.evaluated && s.level2.predicted_families.length > 0) {
+    famSection.style.display = '';
+    let html = '<table class="family-table"><thead><tr><th>Major Class</th><th>Family</th><th>Score</th><th>Matched Reference</th><th>Votes</th></tr></thead><tbody>';
+    s.level2.predicted_families.forEach(f => {
+      html += '<tr><td><span class="badge-class" style="background:'+CLASS_COLORS[f.major_class]+'">'+f.major_class+'</span></td>' +
+        '<td style="font-weight:500">'+f.family_label+'</td>' +
+        '<td>'+(f.score !== null ? f.score.toFixed(5) : '-')+'</td>' +
+        '<td>'+(f.match_sequence_id || '-')+'</td>' +
+        '<td>'+(f.vote_count !== null ? f.vote_count : '-')+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    famContent.innerHTML = html;
+  } else if (s.level2.evaluated) {
+    famSection.style.display = '';
+    famContent.innerHTML = '<div class="not-evaluated">No family predictions</div>';
+  } else {
+    famSection.style.display = '';
+    famContent.innerHTML = '<div class="not-evaluated">Not evaluated (Non-CAZy)</div>';
+  }
+
+  // Sequence
+  document.getElementById('detail-seq-length').textContent = s.length + ' amino acids';
+  document.getElementById('detail-seq').textContent = s.sequence;
+
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('visible');
+  selectedId = null;
+  if (gaugeChart) { gaugeChart.dispose(); gaugeChart = null; }
+  if (radarChart) { radarChart.dispose(); radarChart = null; }
+  renderTable();
+}
+
+// Resize detail charts on window resize
+window.addEventListener('resize', () => {
+  if (gaugeChart) gaugeChart.resize();
+  if (radarChart) radarChart.resize();
+});
+
+// Initial render
+applyFilters();
+</script>
+
+</body>
+</html>

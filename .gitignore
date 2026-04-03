@@ -2,6 +2,7 @@
 dcgm/
 models/
 outputs/
+test_input/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

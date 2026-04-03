@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--save-level2-embeddings", action="store_true",
         help="save level 2 projected embeddings to npy",
     )
+    io_group.add_argument(
+        "--html", action="store_true",
+        help="generate an interactive HTML report",
+    )
 
     # -- Model paths ----------------------------------------------------------
     model_group = parser.add_argument_group("model paths")
@@ -204,6 +208,7 @@ def main() -> None:
         save_level0_embeddings=args.save_level0_embeddings,
         save_level2_embeddings=args.save_level2_embeddings,
         dataloader_workers=args.num_workers,
+        generate_html=args.html,
     )
 
 

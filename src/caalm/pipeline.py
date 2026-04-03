@@ -57,6 +57,7 @@ class PredictionPipeline:
         save_level0_embeddings: bool = False,
         save_level2_embeddings: bool = False,
         dataloader_workers: int = 4,
+        generate_html: bool = False,
     ) -> PredictionResult:
         records = load_sequences_from_fasta(test_fasta)
         sequences = [record.sequence for record in records]
@@ -226,6 +227,20 @@ class PredictionPipeline:
             level1_classes=self.level1_classes,
             _precomputed_maps=result_maps,
         )
+
+        if generate_html:
+            from .visualize import write_report
+
+            write_report(
+                sequences=self.all_sequences,
+                all_ids=ids,
+                level0_map=result_maps[0],
+                level1_map=result_maps[1],
+                level2_map=result_maps[2],
+                level1_classes=self.level1_classes,
+                output_dir=output_dir,
+                output_name=output_name,
+            )
 
         return PredictionResult(
             level0=level0_results,
